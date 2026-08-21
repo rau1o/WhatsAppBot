@@ -1,0 +1,24 @@
+<nav class="nav-menu">
+    <NavLink href="/products" class="nav-link" Match="NavLinkMatch.Prefix">
+        <span>Catálogo</span>
+    </NavLink>
+
+    <NavLink href="/conversations" class="nav-link" Match="NavLinkMatch.Prefix">
+        <span>Conversaciones</span>
+    </NavLink>
+
+    <NavLink href="/payment-proofs" class="nav-link" Match="NavLinkMatch.Prefix">
+        <span>Comprobantes</span>
+    </NavLink>
+
+    <AuthorizeView Roles="Owner">
+        <Authorized>
+            <NavLink href="/users" class="nav-link" Match="NavLinkMatch.Prefix">
+                <span>Usuarios</span>
+            </NavLink>
+            <NavLink href="/settings" class="nav-link" Match="NavLinkMatch.Prefix">
+                <span>Configuración</span>
+            </NavLink>
+        </Authorized>
+    </AuthorizeView>
+</nav>

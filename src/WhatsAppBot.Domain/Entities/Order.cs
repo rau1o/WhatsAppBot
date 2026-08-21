@@ -1,0 +1,37 @@
+using WhatsAppBot.Domain.Enums;
+
+namespace WhatsAppBot.Domain.Entities;
+
+public class Order
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ConversationId { get; set; }
+    public OrderStatus Status { get; set; } = OrderStatus.Draft;
+    public DateTime CreatedAt { get; set; }
+    public List<OrderItem> Items { get; set; } = new();
+
+    public decimal Total => Items.Sum(i => i.UnitPrice * i.Quantity);
+
+    // Regla de negocio simple pero que pertenece acá, no al StateHandler:
+    // si el producto ya está en el pedido, suma cantidad en vez de duplicar la fila.
+    public void AddOrIncrementItem(Product product)
+    {
+        var existing = Items.FirstOrDefault(i => i.ProductId == product.Id);
+        if (existing is not null)
+        {
+            existing.Quantity += 1;
+            return;
+        }
+
+        Items.Add(new OrderItem
+        {
+            Id = Guid.NewGuid(),
+            OrderId = Id,
+            ProductId = product.Id,
+            ProductName = product.Name,
+            UnitPrice = product.Price,
+            Quantity = 1
+        });
+    }
+}

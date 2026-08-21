@@ -1,0 +1,35 @@
+@inherits LayoutComponentBase
+@inject AuthState AuthState
+@inject NavigationManager Nav
+
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="brand">
+            <span class="brand-mark">◆</span>
+            <span class="brand-name">WhatsAppBot</span>
+        </div>
+
+        <NavMenu />
+
+        <div class="sidebar-footer">
+            <div class="user-chip">
+                <span class="user-email">@AuthState.Email</span>
+                <span class="user-role">@AuthState.Role</span>
+            </div>
+            <NavLink href="/change-password" class="btn-link btn-link-muted">Cambiar contraseña 🔑</NavLink>
+            <button class="btn-link btn-link-muted" @onclick="Logout">Cerrar sesión</button>
+        </div>
+    </aside>
+
+    <main class="content">
+        @Body
+    </main>
+</div>
+
+@code {
+    private void Logout()
+    {
+        AuthState.Clear();
+        Nav.NavigateTo("/login", forceLoad: false);
+    }
+}

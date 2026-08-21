@@ -1,0 +1,239 @@
+@page "/users"
+@attribute [Authorize(Roles = "Owner")]
+@inject ApiClient Api
+@inject IJSRuntime JS
+
+<div class="page-header">
+    <div>
+        <h1>Usuarios</h1>
+        <p class="page-subtitle">Quién puede entrar al panel de tu tienda.</p>
+    </div>
+    @if (_draft is null)
+    {
+        <button class="btn btn-primary" @onclick="StartInvite">+ Invitar usuario</button>
+    }
+</div>
+
+@if (_error is not null)
+{
+    <div class="alert alert-error">@_error</div>
+}
+
+@if (_lastInvite is not null)
+{
+    <div class="card form-card">
+        <h2>Usuario invitado ✅</h2>
+        <p>
+            Compartile esta contraseña temporal a <strong>@_lastInvite.User.Email</strong> — no se va a volver a mostrar.
+            Va a poder cambiarla apenas se loguee.
+        </p>
+        <div class="password-reveal">
+            <code>@_lastInvite.TemporaryPassword</code>
+            <button class="btn-link" @onclick="CopyTemporaryPassword">Copiar</button>
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-ghost" @onclick="() => _lastInvite = null">Listo</button>
+        </div>
+    </div>
+}
+
+@if (_draft is not null)
+{
+    <div class="card form-card">
+        <h2>Invitar usuario</h2>
+
+        <div class="field">
+            <label for="email">Email</label>
+            <input id="email" type="email" @bind="_draft.Email" @bind:event="oninput" placeholder="empleado@tutienda.com" />
+        </div>
+
+        <div class="field">
+            <label for="displayName">Nombre</label>
+            <input id="displayName" @bind="_draft.DisplayName" @bind:event="oninput" placeholder="Ej: Juan Pérez" />
+        </div>
+
+        <div class="field">
+            <label for="role">Rol</label>
+            <select id="role" @bind="_draft.Role">
+                <option value="Staff">Staff</option>
+                <option value="Owner">Owner</option>
+            </select>
+        </div>
+
+        @if (_formError is not null)
+        {
+            <p class="form-error">@_formError</p>
+        }
+
+        <div class="form-actions">
+            <button class="btn btn-primary" @onclick="SaveInvite" disabled="@_saving">
+                @(_saving ? "Invitando..." : "Invitar")
+            </button>
+            <button class="btn btn-ghost" @onclick="CancelInvite">Cancelar</button>
+        </div>
+    </div>
+}
+
+@if (_loading)
+{
+    <p class="muted">Cargando usuarios...</p>
+}
+else if (_users.Count > 0)
+{
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Email</th>
+                <th>Nombre</th>
+                <th>Rol</th>
+                <th>Estado</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var user in _users)
+            {
+                <tr>
+                    <td>@user.Email</td>
+                    <td>@user.DisplayName</td>
+                    <td>
+                        <span class="pill @(user.Role == "Owner" ? "pill-info" : "pill-inactive")">@user.Role</span>
+                    </td>
+                    <td>
+                        <span class="pill @(user.IsActive ? "pill-active" : "pill-inactive")">
+                            @(user.IsActive ? "Activo" : "Desactivado")
+                        </span>
+                    </td>
+                    <td class="actions">
+                        <button class="btn-link" @onclick="() => ToggleRole(user)">
+                            @(user.Role == "Owner" ? "Bajar a Staff" : "Ascender a Owner")
+                        </button>
+                        @if (user.IsActive)
+                        {
+                            <button class="btn-link btn-link-danger" @onclick="() => Deactivate(user)">Desactivar</button>
+                        }
+                        else
+                        {
+                            <button class="btn-link" @onclick="() => Reactivate(user)">Reactivar</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<UserDto> _users = [];
+    private bool _loading = true;
+    private bool _saving;
+    private string? _error;
+    private string? _formError;
+    private UserDraft? _draft;
+    private InviteUserResponse? _lastInvite;
+
+    protected override async Task OnInitializedAsync() => await LoadUsers();
+
+    private async Task LoadUsers()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _users = await Api.GetUsersAsync();
+        }
+        catch (Exception)
+        {
+            _error = "No pudimos cargar los usuarios. Probá de nuevo en unos segundos.";
+        }
+        _loading = false;
+    }
+
+    private void StartInvite()
+    {
+        _draft = new UserDraft();
+        _formError = null;
+        _lastInvite = null;
+    }
+
+    private void CancelInvite() => _draft = null;
+
+    private async Task SaveInvite()
+    {
+        if (_draft is null) return;
+
+        if (string.IsNullOrWhiteSpace(_draft.Email) || string.IsNullOrWhiteSpace(_draft.DisplayName))
+        {
+            _formError = "Completá el email y el nombre.";
+            return;
+        }
+
+        _saving = true;
+        _formError = null;
+
+        var (result, error) = await Api.InviteUserAsync(new InviteUserRequest(_draft.Email.Trim(), _draft.DisplayName.Trim(), _draft.Role));
+
+        _saving = false;
+
+        if (result is null)
+        {
+            _formError = error;
+            return;
+        }
+
+        _lastInvite = result;
+        _draft = null;
+        await LoadUsers();
+    }
+
+    private async Task ToggleRole(UserDto user)
+    {
+        _error = null;
+        var newRole = user.Role == "Owner" ? "Staff" : "Owner";
+        var (success, error) = await Api.ChangeRoleAsync(user.Id, newRole);
+
+        if (!success)
+        {
+            _error = error;
+            return;
+        }
+
+        await LoadUsers();
+    }
+
+    private async Task Deactivate(UserDto user)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", $"¿Desactivar a \"{user.DisplayName}\"? Va a dejar de poder loguearse.");
+        if (!confirmed) return;
+
+        _error = null;
+        var (success, error) = await Api.DeactivateUserAsync(user.Id);
+
+        if (!success)
+        {
+            _error = error;
+            return;
+        }
+
+        await LoadUsers();
+    }
+
+    private async Task Reactivate(UserDto user)
+    {
+        await Api.ReactivateUserAsync(user.Id);
+        await LoadUsers();
+    }
+
+    private async Task CopyTemporaryPassword()
+    {
+        if (_lastInvite is null) return;
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", _lastInvite.TemporaryPassword);
+    }
+
+    private class UserDraft
+    {
+        public string Email { get; set; } = "";
+        public string DisplayName { get; set; } = "";
+        public string Role { get; set; } = "Staff";
+    }
+}

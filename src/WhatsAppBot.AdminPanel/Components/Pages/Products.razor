@@ -1,0 +1,214 @@
+@page "/products"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject IJSRuntime JS
+
+<div class="page-header">
+    <div>
+        <h1>Catálogo</h1>
+        <p class="page-subtitle">Los productos que tus clientes ven al escribirte por WhatsApp.</p>
+    </div>
+    @if (_draft is null)
+    {
+        <button class="btn btn-primary" @onclick="StartCreate">+ Nuevo producto</button>
+    }
+</div>
+
+@if (_error is not null)
+{
+    <div class="alert alert-error">@_error</div>
+}
+
+@if (_draft is not null)
+{
+    <div class="card form-card">
+        <h2>@(_editingId is null ? "Nuevo producto" : "Editar producto")</h2>
+
+        <div class="field">
+            <label for="name">Nombre</label>
+            <input id="name" @bind="_draft.Name" @bind:event="oninput" placeholder="Ej: Router TP-Link Archer C6" />
+        </div>
+
+        <div class="field">
+            <label for="description">Descripción (opcional)</label>
+            <textarea id="description" @bind="_draft.Description" @bind:event="oninput" rows="2"></textarea>
+        </div>
+
+        <div class="field-row">
+            <div class="field">
+                <label for="price">Precio (Bs)</label>
+                <input id="price" type="number" step="0.01" min="0"
+                       @bind="_draft.Price" @bind:event="oninput" />
+            </div>
+            <div class="field field-checkbox">
+                <label>
+                    <input type="checkbox" @bind="_draft.IsActive" />
+                    Visible para clientes
+                </label>
+            </div>
+        </div>
+
+        @if (_formError is not null)
+        {
+            <p class="form-error">@_formError</p>
+        }
+
+        <div class="form-actions">
+            <button class="btn btn-primary" @onclick="SaveDraft" disabled="@_saving">
+                @(_saving ? "Guardando..." : "Guardar")
+            </button>
+            <button class="btn btn-ghost" @onclick="CancelDraft">Cancelar</button>
+        </div>
+    </div>
+}
+
+@if (_loading)
+{
+    <p class="muted">Cargando catálogo...</p>
+}
+else if (_products.Count == 0 && _draft is null)
+{
+    <div class="empty-state">
+        <p>Todavía no cargaste ningún producto.</p>
+        <button class="btn btn-primary" @onclick="StartCreate">Cargar el primero</button>
+    </div>
+}
+else if (_products.Count > 0)
+{
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Precio</th>
+                <th>Estado</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var product in _products)
+            {
+                <tr>
+                    <td>@product.Name</td>
+                    <td class="mono">Bs @product.Price.ToString("N2")</td>
+                    <td>
+                        <span class="pill @(product.IsActive ? "pill-active" : "pill-inactive")">
+                            @(product.IsActive ? "Activo" : "Inactivo")
+                        </span>
+                    </td>
+                    <td class="actions">
+                        <button class="btn-link" @onclick="() => StartEdit(product)">Editar</button>
+                        <button class="btn-link btn-link-danger" @onclick="() => DeleteProduct(product)">Eliminar</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<ProductDto> _products = [];
+    private bool _loading = true;
+    private bool _saving;
+    private string? _error;
+    private string? _formError;
+    private Guid? _editingId;
+    private ProductDraft? _draft;
+
+    protected override async Task OnInitializedAsync() => await LoadProducts();
+
+    private async Task LoadProducts()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _products = await Api.GetProductsAsync();
+        }
+        catch (Exception)
+        {
+            _error = "No pudimos cargar el catálogo. Probá de nuevo en unos segundos.";
+        }
+        _loading = false;
+    }
+
+    private void StartCreate()
+    {
+        _editingId = null;
+        _draft = new ProductDraft();
+        _formError = null;
+    }
+
+    private void StartEdit(ProductDto product)
+    {
+        _editingId = product.Id;
+        _draft = new ProductDraft
+        {
+            Name = product.Name,
+            Description = product.Description,
+            Price = product.Price,
+            IsActive = product.IsActive
+        };
+        _formError = null;
+    }
+
+    private void CancelDraft()
+    {
+        _draft = null;
+        _editingId = null;
+        _formError = null;
+    }
+
+    private async Task SaveDraft()
+    {
+        if (_draft is null) return;
+
+        if (string.IsNullOrWhiteSpace(_draft.Name))
+        {
+            _formError = "El nombre es obligatorio.";
+            return;
+        }
+        if (_draft.Price <= 0)
+        {
+            _formError = "El precio tiene que ser mayor a 0.";
+            return;
+        }
+
+        _saving = true;
+        _formError = null;
+
+        var request = new UpsertProductRequest(_draft.Name.Trim(), _draft.Description, _draft.Price, null, _draft.IsActive);
+
+        var success = _editingId is null
+            ? await Api.CreateProductAsync(request) is not null
+            : await Api.UpdateProductAsync(_editingId.Value, request) is not null;
+
+        _saving = false;
+
+        if (!success)
+        {
+            _formError = "No pudimos guardar el producto. Probá de nuevo.";
+            return;
+        }
+
+        _draft = null;
+        _editingId = null;
+        await LoadProducts();
+    }
+
+    private async Task DeleteProduct(ProductDto product)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", $"¿Eliminar \"{product.Name}\"? Esta acción no se puede deshacer.");
+        if (!confirmed) return;
+
+        await Api.DeleteProductAsync(product.Id);
+        await LoadProducts();
+    }
+
+    private class ProductDraft
+    {
+        public string Name { get; set; } = "";
+        public string? Description { get; set; }
+        public decimal Price { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+}

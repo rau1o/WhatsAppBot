@@ -1,0 +1,121 @@
+@page "/payment-proofs"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject IJSRuntime JS
+
+<div class="page-header">
+    <div>
+        <h1>Comprobantes</h1>
+        <p class="page-subtitle">Revisá la foto en tu WhatsApp Business y confirmá acá.</p>
+    </div>
+    <button class="btn btn-ghost" @onclick="LoadProofs" disabled="@_loading">
+        @(_loading ? "Actualizando..." : "Actualizar")
+    </button>
+</div>
+
+@if (_error is not null)
+{
+    <div class="alert alert-error">@_error</div>
+}
+
+@if (_loading && _proofs.Count == 0)
+{
+    <p class="muted">Cargando comprobantes...</p>
+}
+else if (_proofs.Count == 0)
+{
+    <div class="empty-state">
+        <p>No hay comprobantes pendientes de revisión por ahora.</p>
+    </div>
+}
+else
+{
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Cliente</th>
+                <th>Monto del pedido</th>
+                <th>Recibido</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var proof in _proofs)
+            {
+                <tr>
+                    <td class="mono">@proof.CustomerPhoneNumber</td>
+                    <td class="mono">Bs @proof.OrderTotal.ToString("N2")</td>
+                    <td>@proof.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                    <td class="actions">
+                        <button class="btn-link" @onclick="() => Approve(proof)" disabled="@_processingId.HasValue">
+                            Aprobar
+                        </button>
+                        <button class="btn-link btn-link-danger" @onclick="() => Reject(proof)" disabled="@_processingId.HasValue">
+                            Rechazar
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<PaymentProofDto> _proofs = [];
+    private bool _loading = true;
+    private string? _error;
+    private Guid? _processingId;
+
+    protected override async Task OnInitializedAsync() => await LoadProofs();
+
+    private async Task LoadProofs()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _proofs = await Api.GetPendingPaymentProofsAsync();
+        }
+        catch (Exception)
+        {
+            _error = "No pudimos cargar los comprobantes. Probá de nuevo en unos segundos.";
+        }
+        _loading = false;
+    }
+
+    private async Task Approve(PaymentProofDto proof)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            $"¿Confirmar el pago de {proof.CustomerPhoneNumber} por Bs {proof.OrderTotal:N2}? Le vamos a avisar por WhatsApp que su pedido quedó confirmado.");
+        if (!confirmed) return;
+
+        await Process(proof, () => Api.ApprovePaymentProofAsync(proof.Id));
+    }
+
+    private async Task Reject(PaymentProofDto proof)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            $"¿Rechazar el comprobante de {proof.CustomerPhoneNumber}? Le vamos a pedir por WhatsApp que mande uno más claro.");
+        if (!confirmed) return;
+
+        await Process(proof, () => Api.RejectPaymentProofAsync(proof.Id));
+    }
+
+    private async Task Process(PaymentProofDto proof, Func<Task<(bool Success, string? Error)>> action)
+    {
+        _error = null;
+        _processingId = proof.Id;
+
+        var (success, error) = await action();
+
+        _processingId = null;
+
+        if (!success)
+        {
+            _error = error;
+            return;
+        }
+
+        await LoadProofs();
+    }
+}

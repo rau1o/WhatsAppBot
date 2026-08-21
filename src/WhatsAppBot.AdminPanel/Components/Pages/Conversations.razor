@@ -1,0 +1,100 @@
+@page "/conversations"
+@attribute [Authorize]
+@inject ApiClient Api
+
+<div class="page-header">
+    <div>
+        <h1>Conversaciones</h1>
+        <p class="page-subtitle">Lo que está pasando ahora mismo en tu WhatsApp.</p>
+    </div>
+    <button class="btn btn-ghost" @onclick="LoadConversations" disabled="@_loading">
+        @(_loading ? "Actualizando..." : "Actualizar")
+    </button>
+</div>
+
+@if (_error is not null)
+{
+    <div class="alert alert-error">@_error</div>
+}
+
+@if (_loading && _conversations.Count == 0)
+{
+    <p class="muted">Cargando conversaciones...</p>
+}
+else if (_conversations.Count == 0)
+{
+    <div class="empty-state">
+        <p>Todavía no hay conversaciones. En cuanto un cliente le escriba a tu WhatsApp, va a aparecer acá.</p>
+    </div>
+}
+else
+{
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Cliente</th>
+                <th>Estado</th>
+                <th>Último mensaje</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var conversation in _conversations)
+            {
+                <tr>
+                    <td class="mono">@conversation.CustomerPhoneNumber</td>
+                    <td>
+                        <span class="pill @PillClassFor(conversation.State)">@LabelFor(conversation.State)</span>
+                    </td>
+                    <td>@conversation.LastMessageAt.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<ConversationSummaryDto> _conversations = [];
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadConversations();
+
+    private async Task LoadConversations()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _conversations = (await Api.GetConversationsAsync())
+                .OrderByDescending(c => c.LastMessageAt)
+                .ToList();
+        }
+        catch (Exception)
+        {
+            _error = "No pudimos cargar las conversaciones. Probá de nuevo en unos segundos.";
+        }
+        _loading = false;
+    }
+
+    // Traduce el enum ConversationState del Api a algo legible para el
+    // dueño de la tienda — "AwaitingPayment" no le dice nada a nadie.
+    private static string LabelFor(string state) => state switch
+    {
+        "New" => "Nuevo",
+        "Greeted" => "Saludado",
+        "BrowsingCatalog" => "Viendo catálogo",
+        "BuildingOrder" => "Armando pedido",
+        "AwaitingPayment" => "Esperando pago",
+        "PaymentInReview" => "Pago en revisión",
+        "Confirmed" => "Confirmado",
+        _ => state
+    };
+
+    private static string PillClassFor(string state) => state switch
+    {
+        "Confirmed" => "pill-active",
+        "AwaitingPayment" or "PaymentInReview" => "pill-warning",
+        "BrowsingCatalog" or "BuildingOrder" => "pill-info",
+        _ => "pill-inactive"
+    };
+}

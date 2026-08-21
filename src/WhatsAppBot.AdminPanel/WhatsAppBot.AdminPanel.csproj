@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>WhatsAppBot.AdminPanel</RootNamespace>
+  </PropertyGroup>
+
+  <!-- Proyecto separado a propósito: el panel es un consumidor más de la
+       API, igual que cualquier integración futura. No referencia ningún
+       otro proyecto de la solución — todo lo que necesita lo pide por HTTP. -->
+
+</Project>

@@ -1,0 +1,19 @@
+@inject NavigationManager Nav
+
+<AuthorizeView>
+    <Authorized>
+        <div class="page-header">
+            <div>
+                <h1>Acceso restringido</h1>
+                <p class="page-subtitle">Tu usuario no tiene permiso para ver esta página. Si creés que es un error, pedile a un Owner de la tienda que revise tu rol.</p>
+            </div>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        @{ RedirectToLoginPage(); }
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private void RedirectToLoginPage() => Nav.NavigateTo("/login", forceLoad: false);
+}
