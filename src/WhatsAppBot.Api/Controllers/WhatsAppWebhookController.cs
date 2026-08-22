@@ -31,7 +31,12 @@ public class WhatsAppWebhookController : ControllerBase
         [FromQuery(Name = "hub.verify_token")] string token)
     {
         if (token != _options.VerifyToken) return Forbid();
-        return Ok(challenge);
+
+        // Content(), no Ok(): con [ApiController], Ok(string) pasa por el
+        // negociador de contenido y lo serializa como JSON (queda con
+        // comillas, "12345" en vez de 12345). Meta compara el body exacto
+        // contra el challenge que mandó — con comillas de más, siempre falla.
+        return Content(challenge, "text/plain");
     }
 
     [HttpPost]    
