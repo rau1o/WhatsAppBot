@@ -40,8 +40,27 @@ public static class DependencyInjection
            
         }
 
+        // IFileStorage sigue en uso para las fotos que carga el propio tenant
+        // (fachada, QR de cobro — TenantSettingsController) — un puñado de
+        // imágenes por tenant, no un archivo por cada comprobante de cliente.
+        //
+        // Sin credenciales de R2 configuradas (desarrollo local), guardamos
+        // en disco — mismo patrón que el sender/downloader de WhatsApp. En
+        // producción (Railway), el disco del contenedor es efímero y se
+        // pierde en cada redeploy, por eso ahí sí hace falta R2.
         services.Configure<FileStorageOptions>(config.GetSection(FileStorageOptions.SectionName));
-        services.AddSingleton<IFileStorage, LocalFileStorage>();
+        services.Configure<R2FileStorageOptions>(config.GetSection(R2FileStorageOptions.SectionName));
+
+        var r2AccountId = config[$"{R2FileStorageOptions.SectionName}:AccountId"];
+        if (string.IsNullOrWhiteSpace(r2AccountId))
+        {
+            services.AddSingleton<IFileStorage, LocalFileStorage>();
+        }
+        else
+        {
+            services.AddSingleton<IFileStorage, R2FileStorage>();
+        }
+;
 
         // Scoped: una instancia por request HTTP o por ejecución de job de
         // Hangfire — nunca se comparte entre tenants distintos.
