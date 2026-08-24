@@ -43,8 +43,7 @@ public class OrderReviewStateHandler : IStateHandler
         order.Status = OrderStatus.Submitted;
         await _orders.SaveAsync(order, ct);
 
-        await _sender.SendTextAsync(phoneNumberId, to, BuildSummary(order), ct);
-
+        await _sender.SendTextAsync(phoneNumberId, to, OrderSummaryFormatter.BuildSummary(order), ct);
 
         if (!string.IsNullOrWhiteSpace(tenant.PaymentQrImageUrl))
         {
@@ -61,18 +60,6 @@ public class OrderReviewStateHandler : IStateHandler
 
         return new StateResult(ConversationState.AwaitingPayment);
     }
+   
 
-    private static string BuildSummary(Order order)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine("📋 *Resumen de tu pedido*");
-
-        foreach (var item in order.Items)
-            sb.AppendLine($"• {item.Quantity}x {item.ProductName} — Bs {item.UnitPrice * item.Quantity:N2}");
-
-        sb.AppendLine();
-        sb.Append($"*Total: Bs {order.Total:N2}*");
-
-        return sb.ToString();
-    }
 }

@@ -49,7 +49,21 @@ public class CatalogStateHandler : IStateHandler
         await SendCatalogAsync(tenant, phoneNumberId, to, ct);
         return new StateResult(ConversationState.BrowsingCatalog);
     }
+    private async Task ShowOrderSoFarAsync(Tenant tenant, Conversation conversation, string phoneNumberId, string to, CancellationToken ct)
+    {
+        var order = await _orders.GetOrCreateDraftAsync(conversation.Id, ct);
 
+        if (order.Items.Count == 0)
+        {
+            await _sender.SendTextAsync(phoneNumberId, to,
+                "Todavía no agregaste ningún producto. Elegí algo del catálogo:", ct);
+            await SendCatalogAsync(tenant, phoneNumberId, to, ct);
+            return;
+        }
+
+        await _sender.SendTextAsync(phoneNumberId, to, OrderSummaryFormatter.BuildSummary(order), ct);
+        await SendPostAddButtonsAsync(phoneNumberId, to, ct);
+    }
     private async Task<bool> TryAddProductToOrderAsync(
         Tenant tenant, Conversation conversation, string listReplyId, string phoneNumberId, string to, CancellationToken ct)
     {
@@ -66,16 +80,21 @@ public class CatalogStateHandler : IStateHandler
         await _sender.SendTextAsync(phoneNumberId, to,
             $"Agregado: {product.Name} (Bs {product.Price:N2}) ✅", ct);
 
-        await _sender.SendInteractiveButtonsAsync(phoneNumberId, to,
-            "¿Querés agregar otro producto o finalizar el pedido?",
-            new[]
-            {
-                new InteractiveButton(CatalogInteractionIds.AddMore, "Agregar otro"),
-                new InteractiveButton(CatalogInteractionIds.FinishOrder, "Finalizar pedido")
-            }, ct);
+        await SendPostAddButtonsAsync(phoneNumberId, to, ct);
 
         return true;
+
     }
+
+    private Task SendPostAddButtonsAsync(string phoneNumberId, string to, CancellationToken ct)
+       => _sender.SendInteractiveButtonsAsync(phoneNumberId, to,
+           "¿Qué querés hacer ahora?",
+           new[]
+           {
+                new InteractiveButton(CatalogInteractionIds.AddMore, "Agregar otro"),
+                new InteractiveButton(CatalogInteractionIds.ViewOrder, "Ver pedido"),
+                new InteractiveButton(CatalogInteractionIds.FinishOrder, "Finalizar pedido")
+           }, ct);
 
     private async Task SendCatalogAsync(Tenant tenant, string phoneNumberId, string to, CancellationToken ct)
     {
