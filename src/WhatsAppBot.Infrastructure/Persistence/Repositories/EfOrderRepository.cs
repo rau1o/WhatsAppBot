@@ -56,29 +56,37 @@ public class EfOrderRepository : IOrderRepository
 
     public async Task SaveAsync(Order order, CancellationToken ct)
     {
-        // No hace falta Attach/Update: order y sus Items ya vienen trackeados
-        // por este mismo DbContext (scoped a este job/request) desde
-        // GetOrCreateDraftAsync — EF detecta solo los cambios en memoria
-        // (items agregados, cantidades, status).
+        // OrderItem usa un Guid generado por nuestro código (Order.AddOrIncrementItem),
+        // no por la base de datos — cuando se agrega a Items vía List.Add() en vez
+        // de _db.Set<OrderItem>().Add(), EF no puede deducir solo por el valor de la
+        // clave si es un registro nuevo o uno existente, y por default genera un
+        // UPDATE (no un INSERT) para cualquier entidad con clave ya asignada que no
+        // esté explícitamente trackeada. Sin esto, un item nuevo termina como un
+        // UPDATE contra una fila que no existe → DbUpdateConcurrencyException con
+        // "0 rows affected", que es justo lo que estábamos viendo.
+        foreach (var item in order.Items)
+        {
+            if (_db.Entry(item).State == EntityState.Detached)
+            {
+                _db.Entry(item).State = EntityState.Added;
+            }
+        }
+
         try
         {
             await _db.SaveChangesAsync(ct);
         }
         catch (DbUpdateConcurrencyException ex)
         {
-            // Pasa sobre todo cuando Hangfire reintenta un job que ya había
-            // guardado este mismo cambio en un intento anterior (ej.: el
-            // intento previo guardó bien en la base pero falló DESPUÉS, al
-            // mandar la respuesta de WhatsApp — Hangfire reintenta el job
-            // entero, no solo la parte que falló). En vez de tumbar el job
-            // de nuevo, lo tratamos como ya aplicado: es la interpretación
-            // más segura, porque este método siempre guarda un estado
-            // derivado (item agregado o cantidad incrementada), no algo que
-            // dependa de un valor anterior específico.
+            // Se deja como red de seguridad para el caso de un reintento real de
+            // Hangfire sobre un cambio ya aplicado — no debería dispararse más
+            // por el motivo original (el fix de arriba), pero es una situación
+            // legítima que puede pasar igual y no amerita tumbar el job de nuevo.
             _logger.LogWarning(ex,
                 "Concurrencia al guardar el pedido {OrderId} — probablemente un reintento de Hangfire sobre un cambio que ya se había aplicado.",
                 order.Id);
         }
+
 
     }
 
