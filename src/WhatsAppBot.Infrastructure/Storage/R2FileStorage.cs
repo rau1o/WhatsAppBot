@@ -37,13 +37,21 @@ public class R2FileStorage : IFileStorage
         // Mismo nombre = mismo Key = la subida nueva pisa la anterior en el
         // bucket, igual que ya hacía LocalFileStorage — así no se acumulan
         // fotos viejas de fachada/QR cada vez que el dueño actualiza una.
+        // R2 no soporta el "streaming SigV4" que el SDK de AWS usa por
+        // default para firmar la subida — sin desactivarlo, tira
+        // "STREAMING-AWS4-HMAC-SHA256-PAYLOAD not implemented". Tampoco
+        // soporta la validación de checksum automática que el SDK agrega
+        // por default en versiones recientes.
         var request = new PutObjectRequest
         {
             BucketName = _options.BucketName,
             Key = safeFileName,
             InputStream = stream,
-            ContentType = contentType
+            ContentType = contentType,
+            DisablePayloadSigning = true,
+            DisableDefaultChecksumValidation = true
         };
+
 
         await _client.PutObjectAsync(request, ct);
 
