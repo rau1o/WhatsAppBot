@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using WhatsAppBot.Application;
 using WhatsAppBot.Application.Abstractions;
 using WhatsAppBot.Infrastructure.BackgroundJobs;
 using WhatsAppBot.Infrastructure.Identity;
@@ -109,9 +110,10 @@ public static class DependencyInjection
         });
 
         services.Configure<JwtOptions>(config.GetSection(JwtOptions.SectionName));
+        services.Configure<ConversationTimeoutOptions>(config.GetSection(ConversationTimeoutOptions.SectionName));
         services.AddSingleton<JwtTokenService>();
         services.AddScoped<IAuthService, AuthService>();
-        services.AddScoped<IUserManagementService, UserManagementService>();
+        services.AddScoped<IUserManagementService, UserManagementService>(); ;
 
         var jwtOptions = config.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
             ?? throw new InvalidOperationException("Falta la sección 'Jwt' en appsettings.json");
