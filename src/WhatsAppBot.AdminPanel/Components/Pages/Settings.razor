@@ -1,8 +1,12 @@
 @page "/settings"
-@using Microsoft.AspNetCore.Components.Forms
 @attribute [Authorize(Roles = "Owner")]
+@implements IAsyncDisposable
 @inject ApiClient Api
 @inject IConfiguration Configuration
+@inject IJSRuntime JS
+@inject GeocodingService Geocoding
+
+@using Microsoft.AspNetCore.Components.Forms
 
 <div class="page-header">
     <div>
@@ -46,14 +50,45 @@ else if (_settings is not null)
             <input id="locationAddress" @bind="_locationAddress" @bind:event="oninput" />
         </div>
 
+        <div class="field">
+            <label for="addressSearch">Buscar dirección</label>
+            <div class="address-search">
+                <input id="addressSearch" @bind="_addressQuery" @bind:event="oninput"
+                       @onkeydown="OnSearchKeyDown" placeholder="Ej: Av. San Martín 456, Santa Cruz de la Sierra" />
+                <button type="button" class="btn btn-ghost" @onclick="SearchAddress" disabled="@_searching">
+                    @(_searching ? "Buscando..." : "Buscar")
+                </button>
+            </div>
+
+            @if (_searchResults.Count > 0)
+            {
+                <ul class="address-results">
+                    @foreach (var result in _searchResults)
+                    {
+                        <li>
+                            <button type="button" class="btn-link" @onclick="() => SelectSearchResult(result)">
+                                @result.DisplayName
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+
+        <div class="field">
+            <label>Ubicación en el mapa</label>
+            <span class="field-hint">Hacé click en el mapa, o arrastrá el marcador, para ajustar la posición exacta.</span>
+            <div id="location-map" class="location-map"></div>
+        </div>
+
         <div class="field-row">
             <div class="field">
                 <label for="lat">Latitud</label>
-                <input id="lat" type="number" step="0.000001" @bind="_locationLatitude" @bind:event="oninput" />
+                <input id="lat" type="number" step="0.000001" value="@_locationLatitude.ToString(System.Globalization.CultureInfo.InvariantCulture)" disabled />
             </div>
             <div class="field">
                 <label for="lng">Longitud</label>
-                <input id="lng" type="number" step="0.000001" @bind="_locationLongitude" @bind:event="oninput" />
+                <input id="lng" type="number" step="0.000001" value="@_locationLongitude.ToString(System.Globalization.CultureInfo.InvariantCulture)" disabled />
             </div>
         </div>
 
@@ -78,7 +113,7 @@ else if (_settings is not null)
             <img class="settings-preview" src="@ResolveImageUrl(_settings.FacadePhotoUrl)" alt="Fachada de la tienda" />
         }
 
-        <InputFile OnChange="@(e => UploadImage(e, "facade-photo"))" accept="image/png,image/jpeg,image/webp" />
+        <InputFile OnChange='@(e => UploadImage(e, "facade-photo"))' accept="image/png,image/jpeg,image/webp" />
         <span class="field-hint">JPG, PNG o WEBP, hasta 5 MB.</span>
     </div>
 
@@ -95,7 +130,7 @@ else if (_settings is not null)
             <p class="muted">Todavía no cargaste un QR — el bot va a saltar este paso hasta que subas uno.</p>
         }
 
-        <InputFile OnChange="@(e => UploadImage(e, "payment-qr"))" accept="image/png,image/jpeg,image/webp" />
+        <InputFile OnChange='@(e => UploadImage(e, "payment-qr"))' accept="image/png,image/jpeg,image/webp" />
         <span class="field-hint">JPG, PNG o WEBP, hasta 5 MB.</span>
     </div>
 
@@ -120,6 +155,13 @@ else if (_settings is not null)
     private string _locationAddress = "";
     private double _locationLatitude;
     private double _locationLongitude;
+
+    private string _addressQuery = "";
+    private bool _searching;
+    private List<GeocodeResult> _searchResults = [];
+
+    private bool _mapInitialized;
+    private DotNetObjectReference<Settings>? _dotNetRef;
 
     protected override async Task OnInitializedAsync() => await LoadSettings();
 
@@ -147,6 +189,68 @@ else if (_settings is not null)
             _error = "No pudimos cargar la configuración. Probá de nuevo en unos segundos.";
         }
         _loading = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_mapInitialized || _settings is null) return;
+
+        _mapInitialized = true;
+        _dotNetRef = DotNetObjectReference.Create(this);
+
+        await JS.InvokeVoidAsync("locationPicker.init", "location-map", _locationLatitude, _locationLongitude, _dotNetRef);
+    }
+
+    // Invocado desde locationPicker.js cuando el usuario hace click en el
+    // mapa o arrastra el marcador — así el mapa "empuja" el cambio hacia acá,
+    // en vez de que Blazor tenga que hacer polling del estado de Leaflet.
+    [JSInvokable]
+    public void OnLocationPicked(double lat, double lng)
+    {
+        _locationLatitude = lat;
+        _locationLongitude = lng;
+        StateHasChanged();
+    }
+
+    private async Task OnSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SearchAddress();
+    }
+
+    private async Task SearchAddress()
+    {
+        if (string.IsNullOrWhiteSpace(_addressQuery)) return;
+
+        _searching = true;
+        _searchResults = await Geocoding.SearchAsync(_addressQuery);
+        _searching = false;
+
+        if (_searchResults.Count == 0)
+        {
+            _saveError = "No encontramos ninguna dirección con ese texto — probá con más detalle (ciudad, calle y número).";
+        }
+    }
+
+    private async Task SelectSearchResult(GeocodeResult result)
+    {
+        _locationLatitude = result.Latitude;
+        _locationLongitude = result.Longitude;
+        _searchResults = [];
+        _addressQuery = result.DisplayName;
+        _saveError = null;
+
+        await JS.InvokeVoidAsync("locationPicker.setPosition", "location-map", result.Latitude, result.Longitude);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_mapInitialized)
+        {
+            try { await JS.InvokeVoidAsync("locationPicker.dispose", "location-map"); }
+            catch (JSDisconnectedException) { /* el circuito ya se cerró, no hay nada que limpiar */ }
+        }
+
+        _dotNetRef?.Dispose();
     }
 
     private async Task SaveGeneral()

@@ -1,9 +1,20 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using WhatsAppBot.AdminPanel.Components;
 using WhatsAppBot.AdminPanel.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+// Mismo motivo que en el Api: Railway termina HTTPS en su borde y reenvía
+// HTTP puro para adentro — sin esto, UseHttpsRedirection()/UseHsts() pueden
+// terminar en loop de redirección infinito, y las cookies "Secure" se
+// rechazarían pensando que la conexión es HTTP.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -30,6 +41,14 @@ builder.Services.AddHttpClient<ApiClient>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
 });
+// Nominatim pide identificar la app en el User-Agent — sin esto, algunos
+// requests se rechazan silenciosamente según su política de uso.
+builder.Services.AddHttpClient("Nominatim", client =>
+{
+    client.BaseAddress = new Uri("https://nominatim.openstreetmap.org/");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("WhatsAppBotAdminPanel/1.0 (contacto@tutienda.com)");
+});
+builder.Services.AddScoped<GeocodingService>();
 
 var app = builder.Build();
 
