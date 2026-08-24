@@ -4,7 +4,7 @@ using WhatsAppBot.Application.StateHandlers;
 using WhatsAppBot.Application.Tests.TestDoubles;
 using WhatsAppBot.Domain.Entities;
 using WhatsAppBot.Domain.Enums;
-using WhatsAppBot.Infrastructure.MultiTenacy;
+using WhatsAppBot.Infrastructure.Multitenancy;
 using WhatsAppBot.Infrastructure.Persistence;
 using Xunit;
 
@@ -68,7 +68,7 @@ public class CatalogStateHandlerTests
     }
 
     [Fact]
-    public async Task Elegir_un_producto_lo_agrega_al_pedido_y_pregunta_si_seguir_o_finalizar()
+    public async Task Elegir_un_producto_de_la_lista_pregunta_la_cantidad_sin_agregarlo_todavia()
     {
         var sut = MakeSut();
         var product = MakeProduct(sut.Tenant.Id, "Switch 8 puertos", 280);
@@ -82,15 +82,16 @@ public class CatalogStateHandlerTests
 
         result.NextState.Should().Be(ConversationState.BrowsingCatalog);
 
-        var order = await sut.Orders.GetOrCreateDraftAsync(sut.Conversation.Id, CancellationToken.None);
-        order.Items.Should().ContainSingle(i => i.ProductId == product.Id && i.Quantity == 1);
-
         sut.Sender.ButtonMessages.Should().ContainSingle();
-        sut.Sender.ButtonMessages[0].Buttons.Should().Contain(b => b.Id == "catalog:finish");
+        sut.Sender.ButtonMessages[0].Buttons.Should().HaveCount(3)
+            .And.OnlyContain(b => b.Id.StartsWith($"qty:{product.Id}:"));
+
+        var order = await sut.Orders.GetOrCreateDraftAsync(sut.Conversation.Id, CancellationToken.None);
+        order.Items.Should().BeEmpty(); // todavía no eligió cantidad
     }
 
     [Fact]
-    public async Task Elegir_el_mismo_producto_dos_veces_incrementa_la_cantidad_en_vez_de_duplicar()
+    public async Task Elegir_una_cantidad_agrega_el_producto_con_esa_cantidad_y_pregunta_si_seguir()
     {
         var sut = MakeSut();
         var product = MakeProduct(sut.Tenant.Id, "Cable de red", 620);
@@ -98,14 +99,36 @@ public class CatalogStateHandlerTests
 
         var message = new IncomingMessage(
             sut.Conversation.CustomerPhoneNumber, sut.Tenant.WhatsAppPhoneNumberId,
-            null, null, $"product:{product.Id}", null);
+            null, InteractiveButtonId: $"qty:{product.Id}:2", ListReplyId: null, MediaId: null);
+
+        var result = await sut.Handler.HandleAsync(sut.Tenant, sut.Conversation, message, CancellationToken.None);
+
+        result.NextState.Should().Be(ConversationState.BrowsingCatalog);
+
+        var order = await sut.Orders.GetOrCreateDraftAsync(sut.Conversation.Id, CancellationToken.None);
+        order.Items.Should().ContainSingle(i => i.ProductId == product.Id && i.Quantity == 2);
+
+        sut.Sender.ButtonMessages.Should().ContainSingle();
+        sut.Sender.ButtonMessages[0].Buttons.Should().Contain(b => b.Id == "catalog:finish");
+    }
+
+    [Fact]
+    public async Task Elegir_cantidad_del_mismo_producto_dos_veces_suma_en_vez_de_duplicar()
+    {
+        var sut = MakeSut();
+        var product = MakeProduct(sut.Tenant.Id, "Conector RJ45", 15);
+        sut.Products.Seed(product);
+
+        var message = new IncomingMessage(
+            sut.Conversation.CustomerPhoneNumber, sut.Tenant.WhatsAppPhoneNumberId,
+            null, InteractiveButtonId: $"qty:{product.Id}:2", ListReplyId: null, MediaId: null);
 
         await sut.Handler.HandleAsync(sut.Tenant, sut.Conversation, message, CancellationToken.None);
         await sut.Handler.HandleAsync(sut.Tenant, sut.Conversation, message, CancellationToken.None);
 
         var order = await sut.Orders.GetOrCreateDraftAsync(sut.Conversation.Id, CancellationToken.None);
         order.Items.Should().ContainSingle(); // una sola fila...
-        order.Items.Single().Quantity.Should().Be(2); // ...con cantidad 2
+        order.Items.Single().Quantity.Should().Be(4); // ...con cantidad 2+2
     }
 
     [Fact]

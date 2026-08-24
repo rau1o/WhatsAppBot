@@ -15,8 +15,11 @@ public class Order
 
     // Regla de negocio simple pero que pertenece acá, no al StateHandler:
     // si el producto ya está en el pedido, suma cantidad en vez de duplicar la fila.
-    public void AddOrIncrementItem(Product product)
+    public void AddOrIncrementItem(Product product, int quantity = 1)
     {
+        if (quantity < 1)
+            throw new ArgumentOutOfRangeException(nameof(quantity), "La cantidad tiene que ser al menos 1.");
+
         var existing = Items.FirstOrDefault(i => i.ProductId == product.Id);
         if (existing is not null)
         {
@@ -31,7 +34,7 @@ public class Order
             ProductId = product.Id,
             ProductName = product.Name,
             UnitPrice = product.Price,
-            Quantity = 1
+            Quantity = quantity
         });
     }
 }
