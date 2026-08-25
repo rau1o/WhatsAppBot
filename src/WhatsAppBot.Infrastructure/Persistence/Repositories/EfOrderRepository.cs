@@ -87,8 +87,10 @@ public class EfOrderRepository : IOrderRepository
                 .ToList();
 
             _logger.LogWarning(ex,
-                "Concurrencia al guardar el pedido {OrderId} — el cambio NO se aplicó. Entidades en conflicto: {Entries}",
-                order.Id, string.Join(" | ", affectedEntries));
+                "Concurrencia al guardar el pedido {OrderId} (con items actuales: {CurrentItems}) — el cambio NO se aplicó. Entidades en conflicto: {Entries}",
+                order.Id,
+                string.Join(" | ", order.Items.Select(i => $"{i.ProductName}(Id={i.Id}, ProductId={i.ProductId}, Qty={i.Quantity})")),
+                string.Join(" | ", affectedEntries));
 
             // Crítico: sin esto, el DbContext queda en un estado inconsistente
             // después del SaveChangesAsync fallido, y CUALQUIER operación
