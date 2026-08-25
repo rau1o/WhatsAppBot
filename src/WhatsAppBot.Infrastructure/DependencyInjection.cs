@@ -11,7 +11,7 @@ using WhatsAppBot.Application;
 using WhatsAppBot.Application.Abstractions;
 using WhatsAppBot.Infrastructure.BackgroundJobs;
 using WhatsAppBot.Infrastructure.Identity;
-using WhatsAppBot.Infrastructure.MultiTenacy;
+using WhatsAppBot.Infrastructure.MultiTenancy;
 using WhatsAppBot.Infrastructure.Persistence;
 using WhatsAppBot.Infrastructure.Persistence.Repositories;
 using WhatsAppBot.Infrastructure.Storage;
@@ -77,6 +77,7 @@ public static class DependencyInjection
         services.AddScoped<IProductRepository, EfProductRepository>();
         services.AddScoped<IOrderRepository, EfOrderRepository>();
         services.AddScoped<IPaymentProofRepository, EfPaymentProofRepository>();
+        services.AddScoped<IWebhookDeduplicationService, EfWebhookDeduplicationService>();
 
         services.AddHangfire(cfg => cfg
             .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)

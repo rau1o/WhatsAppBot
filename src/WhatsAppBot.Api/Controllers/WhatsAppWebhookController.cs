@@ -13,16 +13,19 @@ public class WhatsAppWebhookController : ControllerBase
 {
     private readonly WhatsAppCloudApiOptions _options;
     private readonly ITenantRepository _tenants;
-    private readonly IBackgroundJobEnqueuer _jobs; 
+    private readonly IBackgroundJobEnqueuer _jobs;
+    private readonly IWebhookDeduplicationService _deduplication;
 
     public WhatsAppWebhookController(
         IOptions<WhatsAppCloudApiOptions> options,
         ITenantRepository tenants,
-        IBackgroundJobEnqueuer jobs)
+        IBackgroundJobEnqueuer jobs,
+        IWebhookDeduplicationService deduplication)
     {
         _options = options.Value;
         _tenants = tenants;
         _jobs = jobs;
+        _deduplication = deduplication;
     }
 
     [HttpGet]
@@ -50,6 +53,14 @@ public class WhatsAppWebhookController : ControllerBase
 
         var tenant = await _tenants.GetByWhatsAppPhoneNumberIdAsync(value.Metadata.PhoneNumberId, ct);
         if (tenant is null) return Ok(); // número no registrado en ningún tenant
+                                         
+        // Meta puede reentregar el mismo mensaje (por ejemplo, si nuestra
+        // respuesta tardó más de la cuenta esa vez puntual — típico con una
+        // conexión a la base "fría" tras un rato sin actividad). Sin este
+        // chequeo, el reintento se procesaría como un mensaje nuevo: productos
+        // duplicados, respuestas repetidas, etc.
+        var isNewMessage = await _deduplication.TryMarkAsProcessedAsync(message.Id, ct);
+        if (!isNewMessage) return Ok();
 
         var incoming = new IncomingMessage(
             CustomerPhoneNumber: message.From,

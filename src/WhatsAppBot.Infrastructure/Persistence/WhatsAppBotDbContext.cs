@@ -31,6 +31,8 @@ namespace WhatsAppBot.Infrastructure.Persistence
         public DbSet<Product> Products => Set<Product>();
         public DbSet<Order> Orders => Set<Order>();
         public DbSet<PaymentProof> PaymentProofs => Set<PaymentProof>();
+        public DbSet<ProcessedWebhookMessage> ProcessedWebhookMessages => Set<ProcessedWebhookMessage>();
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

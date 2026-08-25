@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using WhatsAppBot.Application.Abstractions;
 
-namespace WhatsAppBot.Infrastructure.MultiTenacy
+namespace WhatsAppBot.Infrastructure.MultiTenancy
 {
     // Registrado como Scoped en DI. Con Hangfire.AspNetCore, cada job corre
     // dentro de su propio scope — así como cada request HTTP tiene el suyo —

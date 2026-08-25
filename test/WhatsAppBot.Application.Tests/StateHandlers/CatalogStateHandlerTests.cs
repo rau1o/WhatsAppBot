@@ -4,7 +4,7 @@ using WhatsAppBot.Application.StateHandlers;
 using WhatsAppBot.Application.Tests.TestDoubles;
 using WhatsAppBot.Domain.Entities;
 using WhatsAppBot.Domain.Enums;
-using WhatsAppBot.Infrastructure.Multitenancy;
+using WhatsAppBot.Infrastructure.MultiTenancy;
 using WhatsAppBot.Infrastructure.Persistence;
 using Xunit;
 

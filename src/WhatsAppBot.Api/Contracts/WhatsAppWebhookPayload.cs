@@ -27,6 +27,7 @@ public record Metadata(
 );
 
 public record Message(
+    [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("from")] string From,
     [property: JsonPropertyName("type")] string Type,
     [property: JsonPropertyName("text")] MessageText? Text,
