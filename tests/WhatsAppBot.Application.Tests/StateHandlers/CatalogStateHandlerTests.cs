@@ -124,11 +124,16 @@ public class CatalogStateHandlerTests
             null, InteractiveButtonId: $"qty:{product.Id}:2", ListReplyId: null, MediaId: null);
 
         await sut.Handler.HandleAsync(sut.Tenant, sut.Conversation, message, CancellationToken.None);
+
+        var afterFirst = await sut.Orders.GetOrCreateDraftAsync(sut.Conversation.Id, CancellationToken.None);
+        afterFirst.Items.Should().ContainSingle();
+        afterFirst.Items.Single().Quantity.Should().Be(2, "el primer tap debería dejar cantidad 2");
+
         await sut.Handler.HandleAsync(sut.Tenant, sut.Conversation, message, CancellationToken.None);
 
-        var order = await sut.Orders.GetOrCreateDraftAsync(sut.Conversation.Id, CancellationToken.None);
-        order.Items.Should().ContainSingle(); // una sola fila...
-        order.Items.Single().Quantity.Should().Be(4); // ...con cantidad 2+2
+        var afterSecond = await sut.Orders.GetOrCreateDraftAsync(sut.Conversation.Id, CancellationToken.None);
+        afterSecond.Items.Should().ContainSingle();
+        afterSecond.Items.Single().Quantity.Should().Be(4, "el segundo tap debería sumar otras 2 unidades, 2+2");
     }
 
     [Fact]
@@ -143,5 +148,48 @@ public class CatalogStateHandlerTests
         var result = await sut.Handler.HandleAsync(sut.Tenant, sut.Conversation, message, CancellationToken.None);
 
         result.NextState.Should().Be(ConversationState.BuildingOrder);
+    }
+
+    [Fact]
+    public async Task Con_10_productos_o_menos_no_hay_fila_de_ver_mas()
+    {
+        var sut = MakeSut();
+        for (var i = 0; i < 9; i++)
+            sut.Products.Seed(MakeProduct(sut.Tenant.Id, $"Producto {i}", 10));
+
+        var message = new IncomingMessage(
+            sut.Conversation.CustomerPhoneNumber, sut.Tenant.WhatsAppPhoneNumberId, null, null, null, null);
+
+        await sut.Handler.HandleAsync(sut.Tenant, sut.Conversation, message, CancellationToken.None);
+
+        sut.Sender.ListMessages[0].Sections.Single().Rows.Should().HaveCount(9);
+        sut.Sender.ListMessages[0].Sections.Single().Rows.Should().NotContain(r => r.Id.StartsWith("catalog:page:"));
+    }
+
+    [Fact]
+    public async Task Con_mas_de_9_productos_aparece_Ver_mas_productos_y_pagina_correctamente()
+    {
+        var sut = MakeSut();
+        for (var i = 0; i < 12; i++)
+            sut.Products.Seed(MakeProduct(sut.Tenant.Id, $"Producto {i:D2}", 10));
+
+        var firstMessage = new IncomingMessage(
+            sut.Conversation.CustomerPhoneNumber, sut.Tenant.WhatsAppPhoneNumberId, null, null, null, null);
+        await sut.Handler.HandleAsync(sut.Tenant, sut.Conversation, firstMessage, CancellationToken.None);
+
+        // Página 1: 9 productos + la fila de "Ver más productos" = 10 filas, dentro del límite de WhatsApp.
+        var page1Rows = sut.Sender.ListMessages[0].Sections.Single().Rows;
+        page1Rows.Should().HaveCount(10);
+        page1Rows.Last().Id.Should().Be("catalog:page:1");
+
+        var nextPageMessage = new IncomingMessage(
+            sut.Conversation.CustomerPhoneNumber, sut.Tenant.WhatsAppPhoneNumberId,
+            null, InteractiveButtonId: null, ListReplyId: "catalog:page:1", MediaId: null);
+        await sut.Handler.HandleAsync(sut.Tenant, sut.Conversation, nextPageMessage, CancellationToken.None);
+
+        // Página 2: quedan 3 productos (12 - 9), sin fila de "Ver más" porque ya no hay más.
+        var page2Rows = sut.Sender.ListMessages[1].Sections.Single().Rows;
+        page2Rows.Should().HaveCount(3);
+        page2Rows.Should().NotContain(r => r.Id.StartsWith("catalog:page:"));
     }
 }

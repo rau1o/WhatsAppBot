@@ -6,5 +6,5 @@ namespace WhatsAppBot.Application.Abstractions;
 // El Api/Worker (Hangfire) solo conoce esta interfaz.
 public interface IMessageProcessor
 {
-    Task ProcessAsync(Guid tenantId, IncomingMessage message, CancellationToken ct = default);
+    Task ProcessAsync(Guid tenantId, IncomingMessage message, string correlationId, CancellationToken ct = default);
 }

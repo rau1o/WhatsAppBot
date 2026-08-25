@@ -10,6 +10,7 @@ using System.Text;
 using WhatsAppBot.Application;
 using WhatsAppBot.Application.Abstractions;
 using WhatsAppBot.Infrastructure.BackgroundJobs;
+using WhatsAppBot.Infrastructure.Diagnostics;
 using WhatsAppBot.Infrastructure.Identity;
 using WhatsAppBot.Infrastructure.MultiTenancy;
 using WhatsAppBot.Infrastructure.Persistence;
@@ -66,6 +67,7 @@ public static class DependencyInjection
         // Scoped: una instancia por request HTTP o por ejecución de job de
         // Hangfire — nunca se comparte entre tenants distintos.
         services.AddScoped<ICurrentTenantAccessor, CurrentTenantAccessor>();
+        services.AddScoped<ICorrelationIdAccessor, CorrelationIdAccessor>();
 
         var connectionString = config.GetConnectionString("Default")
             ?? throw new InvalidOperationException("Falta la connection string 'Default' en appsettings.json");

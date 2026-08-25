@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Options;
+using System.Threading.RateLimiting;
 using WhatsAppBot.Api.Middleware;
 using WhatsAppBot.Api.Security;
 using WhatsAppBot.Application;
@@ -36,12 +37,40 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
 builder.Services.Configure<HangfireDashboardOptions>(builder.Configuration.GetSection(HangfireDashboardOptions.SectionName));
+// Manejo global de errores: cualquier excepción no capturada explícitamente
+// en un controller termina acá, en vez de devolver un stack trace crudo o
+// tumbar el proceso.
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
 
+// Health check simple: confirma que el proceso está vivo Y que puede
+// hablar con la base — útil para Railway/monitoreo externo (UptimeRobot,
+// etc.). No requiere autenticación a propósito, como cualquier endpoint
+// de salud pensado para que lo pegue un load balancer o un monitor externo.
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<WhatsAppBotDbContext>("database");
 // Frena fuerza bruta contra /api/auth/login: 5 intentos por minuto por IP,
 // sin cola — el sexto intento se rechaza directo con 429 en vez de esperar.
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    // Límite general para CUALQUIER endpoint, por IP — protección básica
+    // contra abuso/DoS que no depende de que cada controller se acuerde de
+    // pedirlo. Los límites más estrictos (como el de login) se suman
+    // ENCIMA de este, no lo reemplazan.
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 200,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+
+    // Frena fuerza bruta contra /api/auth/login: 5 intentos por minuto por
+    // IP, sin cola — el sexto intento se rechaza directo con 429.
     options.AddFixedWindowLimiter("login", limiterOptions =>
     {
         limiterOptions.PermitLimit = 5;
@@ -49,6 +78,7 @@ builder.Services.AddRateLimiter(options =>
         limiterOptions.QueueLimit = 0;
     });
 });
+
 
 // Sin orígenes configurados, no se permite ningún cross-origin — preferible
 // a un default permisivo. Agregá el dominio real del panel admin en

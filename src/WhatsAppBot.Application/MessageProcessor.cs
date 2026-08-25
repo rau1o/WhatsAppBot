@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using WhatsAppBot.Application.Abstractions;
 using WhatsAppBot.Application.Messaging;
@@ -38,7 +39,9 @@ public class MessageProcessor : IMessageProcessor
     private readonly IOrderRepository _orders;
     private readonly IWhatsAppMessageSender _sender;
     private readonly ICurrentTenantAccessor _currentTenant;
+    private readonly ICorrelationIdAccessor _correlationId;
     private readonly ConversationTimeoutOptions _timeoutOptions;
+    private readonly ILogger<MessageProcessor> _logger;
 
     public MessageProcessor(
         StateHandlerResolver resolver,
@@ -47,7 +50,9 @@ public class MessageProcessor : IMessageProcessor
         IOrderRepository orders,
         IWhatsAppMessageSender sender,
         ICurrentTenantAccessor currentTenant,
-        IOptions<ConversationTimeoutOptions> timeoutOptions)
+        ICorrelationIdAccessor correlationId,
+        IOptions<ConversationTimeoutOptions> timeoutOptions,
+        ILogger<MessageProcessor> logger)
 
     {
         _resolver = resolver;
@@ -56,11 +61,22 @@ public class MessageProcessor : IMessageProcessor
         _orders = orders;
         _sender = sender;
         _currentTenant = currentTenant;
+        _correlationId = correlationId;
         _timeoutOptions = timeoutOptions.Value;
+        _logger = logger;
     }
 
-    public async Task ProcessAsync(Guid tenantId, IncomingMessage message, CancellationToken ct = default)
+    public async Task ProcessAsync(Guid tenantId, IncomingMessage message, string correlationId, CancellationToken ct = default)
     {
+        _correlationId.SetCorrelationId(correlationId);
+
+        // Todo log dentro de este scope (acá y en cualquier repositorio/
+        // handler que use el mismo ILogger) queda taggeado con el mismo
+        // CorrelationId — así se puede buscar en Railway todos los eventos
+        // de un mensaje puntual, incluso si el webhook y el job corrieron
+        // en momentos distintos.
+        using var _ = _logger.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
+
         // A partir de acá, todo lo que lea el DbContext (vía los repositorios)
         // queda automáticamente filtrado a este tenant por el global query filter.
         _currentTenant.SetTenant(tenantId);
@@ -81,6 +97,7 @@ public class MessageProcessor : IMessageProcessor
         conversation.State = result.NextState;
         conversation.LastMessageAt = DateTime.UtcNow;
         await _conversations.SaveAsync(conversation, ct);
+
     }
 
     private async Task<bool> TryHandleResetCommandAsync(Tenant tenant, Conversation conversation, IncomingMessage message, CancellationToken ct)

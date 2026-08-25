@@ -58,6 +58,15 @@ public class CatalogStateHandler : IStateHandler
             if (handled) return new StateResult(ConversationState.BrowsingCatalog);
         }
 
+        // Cliente tocó "Ver más productos" — es una fila de la lista, no un botón.
+        if (message.ListReplyId is not null && message.ListReplyId.StartsWith(CatalogInteractionIds.PagePrefix))
+        {
+            var pageRaw = message.ListReplyId[CatalogInteractionIds.PagePrefix.Length..];
+            var page = int.TryParse(pageRaw, out var parsedPage) ? parsedPage : 0;
+            await SendCatalogAsync(tenant, phoneNumberId, to, ct, page);
+            return new StateResult(ConversationState.BrowsingCatalog);
+        }
+
         // Primer mensaje en este estado, pidió ver más productos, o no
         // entendimos lo que mandó — en todos los casos, mostramos el catálogo.
         await SendCatalogAsync(tenant, phoneNumberId, to, ct);
@@ -133,53 +142,34 @@ public class CatalogStateHandler : IStateHandler
         return true;
     }
 
-    private async Task<bool> TryAddProductToOrderAsync(
-        Tenant tenant, Conversation conversation, string listReplyId, string phoneNumberId, string to, CancellationToken ct)
-    {
-        var rawProductId = listReplyId[CatalogInteractionIds.ProductRowPrefix.Length..];
-        if (!Guid.TryParse(rawProductId, out var productId)) return false;
-
-        var product = await _products.GetByIdAsync(productId, ct);
-        if (product is null || !product.IsActive) return false;
-
-        var order = await _orders.GetOrCreateDraftAsync(conversation.Id, ct);
-        order.AddOrIncrementItem(product);
-        await _orders.SaveAsync(order, ct);
-
-        await _sender.SendTextAsync(phoneNumberId, to,
-            $"Agregado: {product.Name} (Bs {product.Price:N2}) ✅", ct);
-
-        await SendPostAddButtonsAsync(phoneNumberId, to, ct);
-
-        return true;
-
-    }
-
     private Task SendPostAddButtonsAsync(string phoneNumberId, string to, CancellationToken ct)
-       => _sender.SendInteractiveButtonsAsync(phoneNumberId, to,
-           "¿Qué querés hacer ahora?",
-           new[]
-           {
-                new InteractiveButton(CatalogInteractionIds.AddMore, "Agregar otro"),
-                new InteractiveButton(CatalogInteractionIds.ViewOrder, "Ver pedido"),
-                new InteractiveButton(CatalogInteractionIds.FinishOrder, "Finalizar pedido")
-           }, ct);
+    => _sender.SendInteractiveButtonsAsync(phoneNumberId, to,
+        "¿Qué querés hacer ahora?",
+        new[]
+        {
+            new InteractiveButton(CatalogInteractionIds.AddMore, "Agregar otro"),
+            new InteractiveButton(CatalogInteractionIds.ViewOrder, "Ver pedido"),
+            new InteractiveButton(CatalogInteractionIds.FinishOrder, "Finalizar pedido")
+        }, ct);
 
-    private async Task SendCatalogAsync(Tenant tenant, string phoneNumberId, string to, CancellationToken ct)
+    // Se deja 1 fila libre para "Ver más productos" cuando hace falta —
+    // por eso 9, no 10 (el límite real de WhatsApp es 10 filas por lista).
+    private const int ProductsPerPage = 9;
+    private async Task SendCatalogAsync(Tenant tenant, string phoneNumberId, string to, CancellationToken ct, int page = 0)
     {
-        var products = await _products.ListActiveAsync(ct);
+        var allProducts = await _products.ListActiveAsync(ct);
 
-        if (products.Count == 0)
+        if (allProducts.Count == 0)
         {
             await _sender.SendTextAsync(phoneNumberId, to,
                 "Todavía no tenemos productos cargados. Un asesor te va a contactar en breve para ayudarte 🙌", ct);
             return;
         }
 
-        // Límite de la Cloud API: máximo 10 filas por lista. Si el catálogo
-        // crece más que eso, hay que sumar categorías/paginado — fuera de
-        // alcance por ahora.
-        var rows = products
+        var pageProducts = allProducts.Skip(page * ProductsPerPage).Take(ProductsPerPage).ToList();
+        var hasMorePages = allProducts.Count > (page + 1) * ProductsPerPage;
+
+        var rows = pageProducts
             .Take(10)
             .Select(p => new InteractiveListRow(
                 Id: $"{CatalogInteractionIds.ProductRowPrefix}{p.Id}",
@@ -187,12 +177,24 @@ public class CatalogStateHandler : IStateHandler
                 Description: $"Bs {p.Price:N2}"))
             .ToList();
 
+        if (hasMorePages)
+        {
+            rows.Add(new InteractiveListRow(
+                Id: $"{CatalogInteractionIds.PagePrefix}{page + 1}",
+                Title: "Ver más productos"));
+        }
+
+        var bodyText = page == 0
+            ? "Elegí un producto de nuestro catálogo:"
+            : $"Más productos (página {page + 1}):";
+
         await _sender.SendInteractiveListAsync(
             phoneNumberId, to,
-            bodyText: "Elegí un producto de nuestro catálogo:",
+            bodyText: bodyText,
             buttonText: "Ver productos",
             sections: new[] { new InteractiveListSection("Productos disponibles", rows) },
             ct);
+
     }
 
     // WhatsApp trunca (o rechaza) títulos de fila más largos que 24 caracteres.

@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using WhatsAppBot.Application.Messaging;
 using WhatsAppBot.Application.StateHandlers;
 using WhatsAppBot.Application.Tests.TestDoubles;
@@ -25,7 +26,7 @@ public class OrderReviewStateHandlerTests
 
         var orders = new InMemoryOrderRepository();
         var sender = new FakeWhatsAppMessageSender();
-        var handler = new OrderReviewStateHandler(sender, orders);
+        var handler = new OrderReviewStateHandler(sender, orders, NullLogger<OrderReviewStateHandler>.Instance);
 
         var message = new IncomingMessage(conversation.CustomerPhoneNumber, tenant.WhatsAppPhoneNumberId, null, null, null, null);
 
@@ -47,13 +48,16 @@ public class OrderReviewStateHandlerTests
         await orders.SaveAsync(draft, CancellationToken.None);
 
         var sender = new FakeWhatsAppMessageSender();
-        var handler = new OrderReviewStateHandler(sender, orders);
+        var handler = new OrderReviewStateHandler(sender, orders, NullLogger<OrderReviewStateHandler>.Instance);
 
         var message = new IncomingMessage(conversation.CustomerPhoneNumber, tenant.WhatsAppPhoneNumberId, null, null, null, null);
 
         var result = await handler.HandleAsync(tenant, conversation, message, CancellationToken.None);
 
-        result.NextState.Should().Be(ConversationState.BuildingOrder);
+        // Desde que armamos fase 3 (comprobante de pago), un pedido con items
+        // pasa a AwaitingPayment — este test se había quedado con la
+        // expectativa vieja de fase 2 (donde terminaba en BuildingOrder).
+        result.NextState.Should().Be(ConversationState.AwaitingPayment);
 
         var updatedOrder = await orders.GetOrCreateDraftAsync(conversation.Id, CancellationToken.None);
         updatedOrder.Status.Should().Be(OrderStatus.Submitted);

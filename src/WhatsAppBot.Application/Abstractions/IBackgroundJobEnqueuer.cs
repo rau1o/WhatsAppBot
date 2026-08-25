@@ -13,6 +13,6 @@ namespace WhatsAppBot.Application.Abstractions
     // Hangfire por Azure Queues o lo que sea sin tocar Application ni Api.
     public interface IBackgroundJobEnqueuer
     {
-        void EnqueueProcessMessage(Guid tenantId, IncomingMessage message);
+        void EnqueueProcessMessage(Guid tenantId, IncomingMessage message, string correlationId);
     }
 }

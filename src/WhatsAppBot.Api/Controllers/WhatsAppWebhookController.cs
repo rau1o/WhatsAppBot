@@ -62,6 +62,8 @@ public class WhatsAppWebhookController : ControllerBase
         var isNewMessage = await _deduplication.TryMarkAsProcessedAsync(message.Id, ct);
         if (!isNewMessage) return Ok();
 
+        var correlationId = HttpContext.Items["CorrelationId"] as string ?? Guid.NewGuid().ToString();
+
         var incoming = new IncomingMessage(
             CustomerPhoneNumber: message.From,
             TenantPhoneNumberId: value.Metadata.PhoneNumberId,
@@ -73,7 +75,7 @@ public class WhatsAppWebhookController : ControllerBase
 
         // El webhook responde 200 de inmediato — Meta reintenta si no
         // contestás rápido. El procesamiento real corre en background.
-        _jobs.EnqueueProcessMessage(tenant.Id, incoming);
+        _jobs.EnqueueProcessMessage(tenant.Id, incoming, correlationId);
 
         return Ok();
     }
