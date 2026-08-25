@@ -79,14 +79,16 @@ public class EfOrderRepository : IOrderRepository
         }
         catch (DbUpdateConcurrencyException ex)
         {
-            // Red de seguridad para conflictos de concurrencia legítimos —
-            // pero OJO: esto significa que el cambio NO se aplicó. El caller
-            // tiene que chequear el resultado y avisarle al cliente en vez
-            // de asumir que salió bien (eso fue justo el bug: se mandaba
-            // "Agregado ✅" aunque esto fallara en silencio).
+            // ex.Entries nos dice EXACTAMENTE qué entidad(es) estaban en el
+            // batch que falló y en qué estado — sin esto, "0 rows affected"
+            // no alcanza para saber si el problema es el Order o algún OrderItem.
+            var affectedEntries = ex.Entries
+                .Select(e => $"{e.Entity.GetType().Name}(State={e.State}, Key={string.Join(",", e.Properties.Where(p => p.Metadata.IsPrimaryKey()).Select(p => p.CurrentValue))})")
+                .ToList();
+
             _logger.LogWarning(ex,
-                "Concurrencia al guardar el pedido {OrderId} — el cambio NO se aplicó.",
-                order.Id);
+                "Concurrencia al guardar el pedido {OrderId} — el cambio NO se aplicó. Entidades en conflicto: {Entries}",
+                order.Id, string.Join(" | ", affectedEntries));
 
             // Crítico: sin esto, el DbContext queda en un estado inconsistente
             // después del SaveChangesAsync fallido, y CUALQUIER operación
@@ -95,6 +97,7 @@ public class EfOrderRepository : IOrderRepository
             // tiene nada que ver. El resto del job comparte esta misma
             // instancia de DbContext, así que hay que dejarla limpia.
             _db.ChangeTracker.Clear();
+
 
             return false;      
         }
