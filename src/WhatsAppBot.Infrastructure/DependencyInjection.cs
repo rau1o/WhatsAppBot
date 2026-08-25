@@ -83,7 +83,14 @@ public static class DependencyInjection
             .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
             .UseSimpleAssemblyNameTypeSerializer()
             .UseRecommendedSerializerSettings()
-            .UsePostgreSqlStorage(opt => opt.UseNpgsqlConnection(connectionString)));
+            .UsePostgreSqlStorage(opt => opt.UseNpgsqlConnection(connectionString))            
+           // Default de Hangfire son 10 reintentos con esperas crecientes
+            // (pueden extenderse por horas) — ya no los necesitamos tan
+            // agresivos: ahora que el bot le avisa al cliente si algo falla
+            // en vez de fallar en silencio, un job viejo "resucitando" horas
+            // después solo genera confusión (o mensajes de WhatsApp fuera de
+            // contexto) en vez de resolver algo.
+            .UseFilter(new AutomaticRetryAttribute { Attempts = 1, DelaysInSeconds = new[] { 15 } }));
 
         services.AddHangfireServer();
         services.AddScoped<IBackgroundJobEnqueuer, HangfireBackgroundJobEnqueuer>();
