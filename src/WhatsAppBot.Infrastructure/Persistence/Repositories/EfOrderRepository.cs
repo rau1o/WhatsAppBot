@@ -56,20 +56,43 @@ public class EfOrderRepository : IOrderRepository
 
     public async Task<bool> SaveAsync(Order order, CancellationToken ct)
     {
-        // OrderItem usa un Guid generado por nuestro código (Order.AddOrIncrementItem),
-        // no por la base de datos — cuando se agrega a Items vía List.Add() en vez
-        // de _db.Set<OrderItem>().Add(), EF no puede deducir solo por el valor de la
-        // clave si es un registro nuevo o uno existente, y por default genera un
-        // UPDATE (no un INSERT) para cualquier entidad con clave ya asignada que no
-        // esté explícitamente trackeada. Sin esto, un item nuevo termina como un
-        // UPDATE contra una fila que no existe → DbUpdateConcurrencyException con
-        // "0 rows affected", que es justo lo que estábamos viendo.
-        foreach (var item in order.Items)
+        // OrderItem usa una clave (Guid) generada por nuestro código, no por
+        // la base — cuando EF descubre una entidad nueva por su cuenta (vía
+        // auto-detect recorriendo la colección Items de un Order ya
+        // trackeado, en vez de un Add() explícito) y esa entidad ya tiene
+        // una clave con valor "real" asignado, EF asume por default que ya
+        // existe en la base y la marca Modified en vez de Added — generando
+        // un UPDATE contra una fila que nunca existió.
+        //
+        // El problema con solo chequear el Estado después: llamar a
+        // _db.Entry(x) en CUALQUIER item dispara una detección de cambios de
+        // TODO el contexto — así que con un foreach normal, el auto-detect
+        // "descubre" y clasifica mal al item nuevo ANTES de que el bucle
+        // llegue a revisarlo. Por eso desactivamos el auto-detect mientras
+        // clasificamos nosotros mismos qué es genuinamente nuevo.
+        var wasAutoDetectEnabled = _db.ChangeTracker.AutoDetectChangesEnabled;
+        _db.ChangeTracker.AutoDetectChangesEnabled = false;
+
+        try
         {
-            if (_db.Entry(item).State == EntityState.Detached)
+            var trackedItemIds = _db.ChangeTracker.Entries<OrderItem>()
+                .Select(e => e.Entity.Id)
+                .ToHashSet();
+
+            foreach (var item in order.Items)
             {
-                _db.Entry(item).State = EntityState.Added;
+                if (!trackedItemIds.Contains(item.Id))
+                {
+                    _db.Set<OrderItem>().Add(item);
+                }
             }
+        }
+        finally
+        {
+            // Reactivamos el auto-detect para que SÍ se detecten cambios
+            // legítimos en items que ya existían (ej. Quantity incrementada
+            // al elegir el mismo producto dos veces).
+            _db.ChangeTracker.AutoDetectChangesEnabled = wasAutoDetectEnabled;
         }
 
         try
@@ -79,12 +102,15 @@ public class EfOrderRepository : IOrderRepository
         }
         catch (DbUpdateConcurrencyException ex)
         {
-            // ex.Entries nos dice EXACTAMENTE qué entidad(es) estaban en el
-            // batch que falló y en qué estado — sin esto, "0 rows affected"
-            // no alcanza para saber si el problema es el Order o algún OrderItem.
-            var affectedEntries = ex.Entries
-                .Select(e => $"{e.Entity.GetType().Name}(State={e.State}, Key={string.Join(",", e.Properties.Where(p => p.Metadata.IsPrimaryKey()).Select(p => p.CurrentValue))})")
-                .ToList();
+            // Detalle completo de la entidad en conflicto — no solo la clave,
+            // así vemos contra qué OrderId/ProductId está chocando de verdad
+            // en vez de tener que adivinar.
+            var affectedEntries = ex.Entries.Select(e => e.Entity switch
+            {
+                OrderItem oi => $"OrderItem(State={e.State}, Id={oi.Id}, OrderId={oi.OrderId}, ProductId={oi.ProductId}, ProductName={oi.ProductName}, Quantity={oi.Quantity})",
+                Order o2 => $"Order(State={e.State}, Id={o2.Id}, Status={o2.Status})",
+                _ => $"{e.Entity.GetType().Name}(State={e.State})"
+            }).ToList();
 
             _logger.LogWarning(ex,
                 "Concurrencia al guardar el pedido {OrderId} (con items actuales: {CurrentItems}) — el cambio NO se aplicó. Entidades en conflicto: {Entries}",
@@ -100,9 +126,9 @@ public class EfOrderRepository : IOrderRepository
             // instancia de DbContext, así que hay que dejarla limpia.
             _db.ChangeTracker.Clear();
 
-
-            return false;      
+            return false;
         }
+
     }
 
     private Guid RequireTenantId()
