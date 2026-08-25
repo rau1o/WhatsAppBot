@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Text;
 using WhatsAppBot.Application.Abstractions;
 using WhatsAppBot.Application.Messaging;
@@ -13,11 +14,12 @@ public class OrderReviewStateHandler : IStateHandler
 {
     private readonly IWhatsAppMessageSender _sender;
     private readonly IOrderRepository _orders;
-
-    public OrderReviewStateHandler(IWhatsAppMessageSender sender, IOrderRepository orders)
+    private readonly ILogger<OrderReviewStateHandler> _logger;
+    public OrderReviewStateHandler(IWhatsAppMessageSender sender, IOrderRepository orders, ILogger<OrderReviewStateHandler> logger)
     {
         _sender = sender;
         _orders = orders;
+        _logger = logger;
     }
 
     public ConversationState State => ConversationState.BuildingOrder;
@@ -56,8 +58,22 @@ public class OrderReviewStateHandler : IStateHandler
 
         if (!string.IsNullOrWhiteSpace(tenant.PaymentQrImageUrl))
         {
-            await _sender.SendImageByUrlAsync(phoneNumberId, to, tenant.PaymentQrImageUrl,
-                "Escaneá este QR para hacer tu transferencia 👆", ct);
+            // Que Meta rechace esta imagen puntual (formato no soportado,
+            // URL inaccesible desde sus servidores, etc.) no puede tumbar
+            // el resto del flujo — el cliente igual necesita el pedido de
+            // comprobante y que la conversación avance a AwaitingPayment.
+            try
+            {
+                await _sender.SendImageByUrlAsync(phoneNumberId, to, tenant.PaymentQrImageUrl,
+                    "Escaneá este QR para hacer tu transferencia 👆", ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "No se pudo mandar el QR de pago del tenant {TenantId} ({QrUrl}) — se sigue igual sin el QR.",
+                    tenant.Id, tenant.PaymentQrImageUrl);
+            }
+
         }
 
         // Si el tenant todavía no cargó su QR, seguimos igual — no tiene
