@@ -85,10 +85,10 @@ public class InMemoryOrderRepository : IOrderRepository
     public Task<Order?> GetLatestForConversationAsync(Guid conversationId, CancellationToken ct)
         => Task.FromResult(_draftsByConversation.GetValueOrDefault(conversationId));
 
-    public Task SaveAsync(Order order, CancellationToken ct)
+    public Task<bool> SaveAsync(Order order, CancellationToken ct)
     {
         _draftsByConversation[order.ConversationId] = order;
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
 }
 

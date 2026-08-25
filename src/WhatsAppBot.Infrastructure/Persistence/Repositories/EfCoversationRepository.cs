@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,11 +15,12 @@ namespace WhatsAppBot.Infrastructure.Persistence.Repositories
     { 
         private readonly WhatsAppBotDbContext _db;
         private readonly ICurrentTenantAccessor _currentTenant;
-
-        public EfConversationRepository(WhatsAppBotDbContext db, ICurrentTenantAccessor currentTenant)
+        private readonly ILogger<EfConversationRepository> _logger;
+        public EfConversationRepository(WhatsAppBotDbContext db, ICurrentTenantAccessor currentTenant, ILogger<EfConversationRepository> logger)
         {
             _db = db;
             _currentTenant = currentTenant;
+            _logger = logger;
         }
 
         public async Task<Conversation> GetOrCreateAsync(string customerPhoneNumber, CancellationToken ct)
@@ -77,7 +79,24 @@ namespace WhatsAppBot.Infrastructure.Persistence.Repositories
                     $"desde un contexto con tenant actual {tenantId}.");
 
             _db.Conversations.Update(conversation);
-            await _db.SaveChangesAsync(ct);
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                // Mismo motivo que en EfOrderRepository: puede pasar si la
+                // conversación se borró/modificó por fuera de este DbContext
+                // (ej. un reintento tardío de Hangfire sobre datos que un job
+                // más nuevo ya cambió, o una limpieza manual de datos de prueba).
+                // No tumbamos el job por esto — y limpiamos el change tracker
+                // para no arrastrar un estado inconsistente al resto del proceso.
+                _logger.LogWarning(ex,
+                    "Concurrencia al guardar la conversación {ConversationId} — se descarta este intento.",
+                    conversation.Id);
+                _db.ChangeTracker.Clear();
+            }
+
         }
 
         public async Task<IReadOnlyList<Conversation>> ListRecentAsync(CancellationToken ct)

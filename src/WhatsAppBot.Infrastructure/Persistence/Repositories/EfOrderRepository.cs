@@ -54,7 +54,7 @@ public class EfOrderRepository : IOrderRepository
             .OrderByDescending(o => o.CreatedAt)
             .FirstOrDefaultAsync(ct);
 
-    public async Task SaveAsync(Order order, CancellationToken ct)
+    public async Task<bool> SaveAsync(Order order, CancellationToken ct)
     {
         // OrderItem usa un Guid generado por nuestro código (Order.AddOrIncrementItem),
         // no por la base de datos — cuando se agrega a Items vía List.Add() en vez
@@ -75,19 +75,29 @@ public class EfOrderRepository : IOrderRepository
         try
         {
             await _db.SaveChangesAsync(ct);
+            return true;
         }
         catch (DbUpdateConcurrencyException ex)
         {
-            // Se deja como red de seguridad para el caso de un reintento real de
-            // Hangfire sobre un cambio ya aplicado — no debería dispararse más
-            // por el motivo original (el fix de arriba), pero es una situación
-            // legítima que puede pasar igual y no amerita tumbar el job de nuevo.
+            // Red de seguridad para conflictos de concurrencia legítimos —
+            // pero OJO: esto significa que el cambio NO se aplicó. El caller
+            // tiene que chequear el resultado y avisarle al cliente en vez
+            // de asumir que salió bien (eso fue justo el bug: se mandaba
+            // "Agregado ✅" aunque esto fallara en silencio).
             _logger.LogWarning(ex,
-                "Concurrencia al guardar el pedido {OrderId} — probablemente un reintento de Hangfire sobre un cambio que ya se había aplicado.",
+                "Concurrencia al guardar el pedido {OrderId} — el cambio NO se aplicó.",
                 order.Id);
+
+            // Crítico: sin esto, el DbContext queda en un estado inconsistente
+            // después del SaveChangesAsync fallido, y CUALQUIER operación
+            // posterior en el mismo DbContext (ej. guardar la conversación al
+            // final de MessageProcessor) puede fallar con un error que no
+            // tiene nada que ver. El resto del job comparte esta misma
+            // instancia de DbContext, así que hay que dejarla limpia.
+            _db.ChangeTracker.Clear();
+
+            return false;      
         }
-
-
     }
 
     private Guid RequireTenantId()

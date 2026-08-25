@@ -39,5 +39,7 @@ public interface IOrderRepository
     // misma conversación, esto va a necesitar desambiguar por fecha o por
     // un Id de pedido explícito en vez de "el último".
     Task<Order?> GetLatestForConversationAsync(Guid conversationId, CancellationToken ct);
-    Task SaveAsync(Order order, CancellationToken ct);
+    // Devuelve false si no se pudo aplicar el cambio (ej. conflicto de
+    // concurrencia) — el caller NUNCA debe asumir éxito sin chequear esto.
+    Task<bool> SaveAsync(Order order, CancellationToken ct);
 }

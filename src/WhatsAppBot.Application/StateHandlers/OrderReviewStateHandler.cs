@@ -41,7 +41,16 @@ public class OrderReviewStateHandler : IStateHandler
         }
 
         order.Status = OrderStatus.Submitted;
-        await _orders.SaveAsync(order, ct);
+        var saved =await _orders.SaveAsync(order, ct);
+
+        if (!saved)
+        {
+            // Mismo criterio que en CatalogStateHandler: nunca avanzar el
+            // estado (ni pedir el comprobante) si el pedido no se guardó de verdad.
+            await _sender.SendTextAsync(phoneNumberId, to,
+                "Uy, tuvimos un problema confirmando tu pedido. ¿Podés tocar \"Finalizar pedido\" de nuevo?", ct);
+            return new StateResult(ConversationState.BuildingOrder);
+        }
 
         await _sender.SendTextAsync(phoneNumberId, to, OrderSummaryFormatter.BuildSummary(order), ct);
 
@@ -50,6 +59,7 @@ public class OrderReviewStateHandler : IStateHandler
             await _sender.SendImageByUrlAsync(phoneNumberId, to, tenant.PaymentQrImageUrl,
                 "Escaneá este QR para hacer tu transferencia 👆", ct);
         }
+
         // Si el tenant todavía no cargó su QR, seguimos igual — no tiene
         // sentido trabar el pedido del cliente por una configuración
         // pendiente del lado de la tienda. El panel admin debería avisarle

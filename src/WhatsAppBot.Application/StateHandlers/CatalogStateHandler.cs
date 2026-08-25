@@ -114,7 +114,16 @@ public class CatalogStateHandler : IStateHandler
 
         var order = await _orders.GetOrCreateDraftAsync(conversation.Id, ct);
         order.AddOrIncrementItem(product, quantity);
-        await _orders.SaveAsync(order, ct);
+        var saved = await _orders.SaveAsync(order, ct);
+
+        if (!saved)
+        {
+            // Nunca confirmarle al cliente algo que en realidad no se guardó —
+            // mejor pedirle que reintente que mentirle sobre el estado de su pedido.
+            await _sender.SendTextAsync(phoneNumberId, to,
+                "Uy, tuvimos un problema agregando ese producto. ¿Podés intentarlo de nuevo?", ct);
+            return true;
+        }
 
         await _sender.SendTextAsync(phoneNumberId, to,
             $"Agregado: {quantity}x {product.Name} (Bs {product.Price:N2} c/u) ✅", ct);
