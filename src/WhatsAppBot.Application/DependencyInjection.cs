@@ -13,6 +13,7 @@ public static class DependencyInjection
     {
         services.AddScoped<IStateHandler, NewConversationStateHandler>();
         services.AddScoped<IStateHandler, CatalogStateHandler>();
+        services.AddScoped<IStateHandler, QuantityInputStateHandler>();
         services.AddScoped<IStateHandler, OrderReviewStateHandler>();
         services.AddScoped<IStateHandler, PaymentProofStateHandler>();
         services.AddScoped<IStateHandler, PaymentInReviewStateHandler>();

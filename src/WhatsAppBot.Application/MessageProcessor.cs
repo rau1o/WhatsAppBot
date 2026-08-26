@@ -19,6 +19,7 @@ public class MessageProcessor : IMessageProcessor
     // comprometerse a nada no tiene "abandono" real que resetear.
     private static readonly ConversationState[] StuckStates =
     {
+        ConversationState.AwaitingQuantity,
         ConversationState.BuildingOrder,
         ConversationState.AwaitingPayment,
         ConversationState.PaymentInReview
@@ -154,7 +155,7 @@ public class MessageProcessor : IMessageProcessor
         }
 
         await _sender.SendTextAsync(tenant.WhatsAppPhoneNumberId, conversation.CustomerPhoneNumber, notificationMessage, ct);
-
+        conversation.PendingProductId = null;
         conversation.State = ConversationState.BrowsingCatalog;
     }
 

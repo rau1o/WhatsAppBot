@@ -31,7 +31,9 @@ public class CatalogStateHandler : IStateHandler
         var to = conversation.CustomerPhoneNumber;
         var phoneNumberId = tenant.WhatsAppPhoneNumberId;
 
-        // Cliente terminó de elegir productos.
+        // Cliente terminó de elegir productos. ContinueImmediately: true
+        // porque acá no mandamos nada nosotros — es OrderReviewStateHandler
+        // el que arma el resumen + QR + pedido de comprobante.
         if (message.InteractiveButtonId == CatalogInteractionIds.FinishOrder)
         {
             return new StateResult(ConversationState.BuildingOrder, ContinueImmediately: true);
@@ -44,19 +46,14 @@ public class CatalogStateHandler : IStateHandler
             return new StateResult(ConversationState.BrowsingCatalog);
         }
 
-        // Cliente ya eligió cuántas unidades quiere — acá recién se agrega al pedido.
-        if (message.InteractiveButtonId is not null && message.InteractiveButtonId.StartsWith(CatalogInteractionIds.QuantityPrefix))
-        {
-            var handled = await TryAddChosenQuantityAsync(conversation, message.InteractiveButtonId, phoneNumberId, to, ct);
-            if (handled) return new StateResult(ConversationState.BrowsingCatalog);
-        }
-
-        // Cliente eligió un producto de la lista — preguntamos cantidad antes de agregarlo.
+        // Cliente eligió un producto de la lista — a partir de acá le
+        // pedimos que ESCRIBA la cantidad (fuera de este handler, en
+        // QuantityInputStateHandler).
         if (message.ListReplyId is not null && message.ListReplyId.StartsWith(CatalogInteractionIds.ProductRowPrefix))
         {
-            var handled = await TryAskQuantityAsync(message.ListReplyId, phoneNumberId, to, ct);
-            if (handled) return new StateResult(ConversationState.BrowsingCatalog);
-        }
+            var handled = await TryAskQuantityAsync(conversation, message.ListReplyId, phoneNumberId, to, ct);
+            if (handled) return new StateResult(ConversationState.AwaitingQuantity);
+        }       
 
         // Cliente tocó "Ver más productos" — es una fila de la lista, no un botón.
         if (message.ListReplyId is not null && message.ListReplyId.StartsWith(CatalogInteractionIds.PagePrefix))
@@ -86,11 +83,13 @@ public class CatalogStateHandler : IStateHandler
         }
 
         await _sender.SendTextAsync(phoneNumberId, to, OrderSummaryFormatter.BuildSummary(order), ct);
-        await SendPostAddButtonsAsync(phoneNumberId, to, ct);
+        await CatalogPostAddPrompt.SendAsync(_sender, phoneNumberId, to, ct);
     }
-    // Máximo 3 botones (límite de WhatsApp) — para más de 3 unidades, el
-    // cliente vuelve a elegir el mismo producto y se suma sobre lo que ya tenía.
-    private async Task<bool> TryAskQuantityAsync(string listReplyId, string phoneNumberId, string to, CancellationToken ct)
+
+    // Guarda qué producto quedó pendiente y le pide al cliente que escriba
+    // la cantidad — la validación y el agregado real al pedido pasan en
+    // QuantityInputStateHandler, en el próximo mensaje.
+    private async Task<bool> TryAskQuantityAsync(Conversation conversation, string listReplyId, string phoneNumberId, string to, CancellationToken ct)
     {
         var rawProductId = listReplyId[CatalogInteractionIds.ProductRowPrefix.Length..];
         if (!Guid.TryParse(rawProductId, out var productId)) return false;
@@ -98,60 +97,15 @@ public class CatalogStateHandler : IStateHandler
         var product = await _products.GetByIdAsync(productId, ct);
         if (product is null || !product.IsActive) return false;
 
+        conversation.PendingProductId = productId;
+
         await _sender.SendInteractiveButtonsAsync(phoneNumberId, to,
-            $"¿Cuántas unidades de {product.Name} querés?",
-            new[]
-            {
-                new InteractiveButton($"{CatalogInteractionIds.QuantityPrefix}{productId}:1", "1"),
-                new InteractiveButton($"{CatalogInteractionIds.QuantityPrefix}{productId}:2", "2"),
-                new InteractiveButton($"{CatalogInteractionIds.QuantityPrefix}{productId}:3", "3")
-            }, ct);
+            $"¿Cuántas unidades de *{product.Name}* querés? Escribí el número (por ejemplo: 5).",
+            new[] { new InteractiveButton(CatalogInteractionIds.QuantityCancel, "Cancelar") }, ct);
 
         return true;
     }
-    private async Task<bool> TryAddChosenQuantityAsync(
-        Conversation conversation, string buttonId, string phoneNumberId, string to, CancellationToken ct)
-    {
-        // buttonId tiene la forma "qty:{productId}:{cantidad}"
-        var raw = buttonId[CatalogInteractionIds.QuantityPrefix.Length..];
-        var parts = raw.Split(':');
-        if (parts.Length != 2 || !Guid.TryParse(parts[0], out var productId) || !int.TryParse(parts[1], out var quantity))
-            return false;
-
-        var product = await _products.GetByIdAsync(productId, ct);
-        if (product is null || !product.IsActive) return false;
-
-        var order = await _orders.GetOrCreateDraftAsync(conversation.Id, ct);
-        order.AddOrIncrementItem(product, quantity);
-        var saved = await _orders.SaveAsync(order, ct);
-
-        if (!saved)
-        {
-            // Nunca confirmarle al cliente algo que en realidad no se guardó —
-            // mejor pedirle que reintente que mentirle sobre el estado de su pedido.
-            await _sender.SendTextAsync(phoneNumberId, to,
-                "Uy, tuvimos un problema agregando ese producto. ¿Podés intentarlo de nuevo?", ct);
-            return true;
-        }
-
-        await _sender.SendTextAsync(phoneNumberId, to,
-            $"Agregado: {quantity}x {product.Name} (Bs {product.Price:N2} c/u) ✅", ct);
-
-        await SendPostAddButtonsAsync(phoneNumberId, to, ct);
-
-        return true;
-    }
-
-    private Task SendPostAddButtonsAsync(string phoneNumberId, string to, CancellationToken ct)
-    => _sender.SendInteractiveButtonsAsync(phoneNumberId, to,
-        "¿Qué querés hacer ahora?",
-        new[]
-        {
-            new InteractiveButton(CatalogInteractionIds.AddMore, "Agregar otro"),
-            new InteractiveButton(CatalogInteractionIds.ViewOrder, "Ver pedido"),
-            new InteractiveButton(CatalogInteractionIds.FinishOrder, "Finalizar pedido")
-        }, ct);
-
+   
     // Se deja 1 fila libre para "Ver más productos" cuando hace falta —
     // por eso 9, no 10 (el límite real de WhatsApp es 10 filas por lista).
     private const int ProductsPerPage = 9;
