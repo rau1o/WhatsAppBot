@@ -39,7 +39,7 @@ public class OrderReviewStateHandler : IStateHandler
         {
             await _sender.SendTextAsync(phoneNumberId, to,
                 "Todavía no agregaste ningún producto. Te muestro el catálogo de nuevo:", ct);
-            return new StateResult(ConversationState.BrowsingCatalog);
+            return new StateResult(ConversationState.BrowsingCatalog, ContinueImmediately: true);
         }
 
         order.Status = OrderStatus.Submitted;

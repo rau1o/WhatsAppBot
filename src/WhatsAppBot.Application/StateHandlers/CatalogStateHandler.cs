@@ -34,7 +34,7 @@ public class CatalogStateHandler : IStateHandler
         // Cliente terminó de elegir productos.
         if (message.InteractiveButtonId == CatalogInteractionIds.FinishOrder)
         {
-            return new StateResult(ConversationState.BuildingOrder);
+            return new StateResult(ConversationState.BuildingOrder, ContinueImmediately: true);
         }
 
         // Cliente quiere ver qué lleva hasta ahora, sin finalizar todavía.
@@ -70,7 +70,7 @@ public class CatalogStateHandler : IStateHandler
         // Primer mensaje en este estado, pidió ver más productos, o no
         // entendimos lo que mandó — en todos los casos, mostramos el catálogo.
         await SendCatalogAsync(tenant, phoneNumberId, to, ct);
-        return new StateResult(ConversationState.BrowsingCatalog);
+        return new StateResult(ConversationState.BrowsingCatalog, ContinueImmediately: true);
 
     }
     private async Task ShowOrderSoFarAsync(Tenant tenant, Conversation conversation, string phoneNumberId, string to, CancellationToken ct)

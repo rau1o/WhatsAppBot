@@ -91,12 +91,32 @@ public class MessageProcessor : IMessageProcessor
             await ResetIfStaleAsync(tenant, conversation, ct);
         }
 
-        var handler = _resolver.Resolve(conversation.State);
-        var result = await handler.HandleAsync(tenant, conversation, message, ct);
+        // La mayoría de las veces este loop corre UNA sola vuelta. Solo sigue de
+        // largo cuando un handler pide explícitamente continuar al estado nuevo
+        // sin esperar otro mensaje real (ContinueImmediately = true) — por
+        // ejemplo, mostrar el catálogo apenas termina el saludo, o el resumen +
+        // QR apenas el cliente toca "Finalizar pedido". El límite de 5 es una
+        // red de seguridad contra un bug futuro que encadene estados sin fin.
+        var currentMessage = message;
+        const int maxChainedTransitions = 5;
 
-        conversation.State = result.NextState;
-        conversation.LastMessageAt = DateTime.UtcNow;
-        await _conversations.SaveAsync(conversation, ct);
+        for (var i = 0; i < maxChainedTransitions; i++)
+        {
+            var handler = _resolver.Resolve(conversation.State);
+            var result = await handler.HandleAsync(tenant, conversation, currentMessage, ct);
+
+            conversation.State = result.NextState;
+            conversation.LastMessageAt = DateTime.UtcNow;
+            await _conversations.SaveAsync(conversation, ct);
+
+            if (!result.ContinueImmediately) break;
+
+            // Simulamos un mensaje "vacío" (sin texto, sin botón, sin nada) para
+            // que el próximo handler dispare su comportamiento de "recién entré
+            // a este estado" — el mismo que ya usa cuando el cliente manda un
+            // mensaje que no matchea ningún botón conocido.
+            currentMessage = new IncomingMessage(message.CustomerPhoneNumber, message.TenantPhoneNumberId, null, null, null, null);
+        }
 
     }
 
