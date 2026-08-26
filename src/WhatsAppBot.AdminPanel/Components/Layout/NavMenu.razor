@@ -11,6 +11,10 @@
         <span>Comprobantes</span>
     </NavLink>
 
+    <NavLink href="/orders" class="nav-link" Match="NavLinkMatch.Prefix">
+        <span>Pedidos</span>
+    </NavLink>
+
     <AuthorizeView Roles="Owner">
         <Authorized>
             <NavLink href="/users" class="nav-link" Match="NavLinkMatch.Prefix">

@@ -15,5 +15,6 @@ public record ChangeRoleRequest(string Role);
 public record TenantSettingsDto(Guid Id, string Name, string WhatsAppPhoneNumberId, double LocationLatitude, double LocationLongitude, string LocationName, string LocationAddress, string FacadePhotoUrl, string? PaymentQrImageUrl);
 
 public record UpdateTenantSettingsRequest(string Name, double LocationLatitude, double LocationLongitude, string LocationName, string LocationAddress);
-
 public record PaymentProofDto(Guid Id, Guid OrderId, string CustomerPhoneNumber, decimal OrderTotal, string Status, DateTime CreatedAt);
+public record OrderItemLineDto(string ProductName, int Quantity, decimal UnitPrice);
+public record FulfillmentOrderDto(Guid Id, string CustomerPhoneNumber, decimal Total, string FulfillmentStatus, DateTime CreatedAt, List<OrderItemLineDto> Items);

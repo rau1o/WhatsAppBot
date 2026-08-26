@@ -90,6 +90,15 @@ public class InMemoryOrderRepository : IOrderRepository
         _draftsByConversation[order.ConversationId] = order;
         return Task.FromResult(true);
     }
+    public Task<IReadOnlyList<Order>> ListByFulfillmentStatusAsync(OrderFulfillmentStatus status, CancellationToken ct)
+    {
+        IReadOnlyList<Order> result = _draftsByConversation.Values
+            .Where(o => o.FulfillmentStatus == status)
+            .OrderBy(o => o.CreatedAt)
+            .ToList();
+        return Task.FromResult(result);
+    }
+
 }
 
 public class InMemoryPaymentProofRepository : IPaymentProofRepository

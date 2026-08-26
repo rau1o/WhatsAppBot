@@ -53,6 +53,16 @@ public class EfOrderRepository : IOrderRepository
             .Where(o => o.ConversationId == conversationId)
             .OrderByDescending(o => o.CreatedAt)
             .FirstOrDefaultAsync(ct);
+    public async Task<IReadOnlyList<Order>> ListByFulfillmentStatusAsync(OrderFulfillmentStatus status, CancellationToken ct)
+    {
+        RequireTenantId();
+
+        return await _db.Orders
+            .Include(o => o.Items)
+            .Where(o => o.FulfillmentStatus == status)
+            .OrderBy(o => o.CreatedAt) // los más viejos primero — son los que llevan más tiempo esperando
+            .ToListAsync(ct);
+    }
 
     public async Task<bool> SaveAsync(Order order, CancellationToken ct)
     {

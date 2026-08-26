@@ -1,0 +1,157 @@
+@page "/orders"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject IJSRuntime JS
+
+<div class="page-header">
+    <div>
+        <h1>Pedidos</h1>
+        <p class="page-subtitle">Pedidos ya pagos — prepará, marcá listo, y entregá.</p>
+    </div>
+    <button class="btn btn-ghost" @onclick="LoadOrders" disabled="@_loading">
+        @(_loading ? "Actualizando..." : "Actualizar")
+    </button>
+</div>
+
+<div class="tabs">
+    <button class="tab @(_activeTab == "pending" ? "tab-active" : "")" @onclick='() => SwitchTab("pending")'>
+        Para preparar
+    </button>
+    <button class="tab @(_activeTab == "ready" ? "tab-active" : "")" @onclick='() => SwitchTab("ready")'>
+        Listos para recoger
+    </button>
+    <button class="tab @(_activeTab == "completed" ? "tab-active" : "")" @onclick='() => SwitchTab("completed")'>
+        Entregados
+    </button>
+</div>
+
+@if (_error is not null)
+{
+    <div class="alert alert-error">@_error</div>
+}
+
+@if (_loading && _orders.Count == 0)
+{
+    <p class="muted">Cargando pedidos...</p>
+}
+else if (_orders.Count == 0)
+{
+    <div class="empty-state">
+        <p>@EmptyStateMessage()</p>
+    </div>
+}
+else
+{
+    @foreach (var order in _orders)
+    {
+        <div class="card order-card">
+            <div class="order-card-header">
+                <span class="mono">@order.CustomerPhoneNumber</span>
+                <span class="mono">Bs @order.Total.ToString("N2")</span>
+            </div>
+
+            <ul class="order-items">
+                @foreach (var item in order.Items)
+                {
+                    <li>@item.Quantity x @item.ProductName</li>
+                }
+            </ul>
+
+            <div class="order-card-footer">
+                <span class="muted">@order.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</span>
+
+                @if (_activeTab == "pending")
+                {
+                    <button class="btn-link" @onclick="() => MarkReady(order)" disabled="@_processingId.HasValue">
+                        Marcar listo para recoger
+                    </button>
+                }
+                else if (_activeTab == "ready")
+                {
+                    <button class="btn-link" @onclick="() => MarkCompleted(order)" disabled="@_processingId.HasValue">
+                        Marcar entregado
+                    </button>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private string _activeTab = "pending";
+    private List<FulfillmentOrderDto> _orders = [];
+    private bool _loading = true;
+    private string? _error;
+    private Guid? _processingId;
+
+    protected override async Task OnInitializedAsync() => await LoadOrders();
+
+    private async Task SwitchTab(string tab)
+    {
+        if (_activeTab == tab) return;
+        _activeTab = tab;
+        await LoadOrders();
+    }
+
+    private async Task LoadOrders()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var apiStatus = _activeTab switch
+            {
+                "ready" => "ReadyForPickup",
+                "completed" => "Completed",
+                _ => "Pending"
+            };
+            _orders = await Api.GetOrdersByStatusAsync(apiStatus);
+        }
+        catch (Exception)
+        {
+            _error = "No pudimos cargar los pedidos. Probá de nuevo en unos segundos.";
+        }
+        _loading = false;
+    }
+
+    private string EmptyStateMessage() => _activeTab switch
+    {
+        "ready" => "No hay pedidos listos para recoger todavía.",
+        "completed" => "Todavía no hay pedidos entregados.",
+        _ => "No hay pedidos para preparar por ahora."
+    };
+
+    private async Task MarkReady(FulfillmentOrderDto order)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", $"¿Marcar el pedido de {order.CustomerPhoneNumber} como listo para recoger?");
+        if (!confirmed) return;
+
+        await Process(order, () => Api.MarkOrderReadyAsync(order.Id));
+    }
+
+    private async Task MarkCompleted(FulfillmentOrderDto order)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", $"¿Marcar el pedido de {order.CustomerPhoneNumber} como entregado?");
+        if (!confirmed) return;
+
+        await Process(order, () => Api.MarkOrderCompletedAsync(order.Id));
+    }
+
+    private async Task Process(FulfillmentOrderDto order, Func<Task<(bool Success, string? Error)>> action)
+    {
+        _error = null;
+        _processingId = order.Id;
+
+        var (success, error) = await action();
+
+        _processingId = null;
+
+        if (!success)
+        {
+            _error = error;
+            return;
+        }
+
+        await LoadOrders();
+    }
+}

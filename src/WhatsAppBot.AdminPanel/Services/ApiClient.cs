@@ -189,6 +189,26 @@ public class ApiClient
         if (response.IsSuccessStatusCode) return (true, null);
         return (false, await TryReadErrorMessage(response) ?? "No pudimos rechazar el comprobante.");
     }
+    public async Task<List<FulfillmentOrderDto>> GetOrdersByStatusAsync(string status)
+    {
+        var response = await SendAsync(HttpMethod.Get, $"api/orders?status={status}");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<FulfillmentOrderDto>>() ?? [];
+    }
+
+    public async Task<(bool Success, string? Error)> MarkOrderReadyAsync(Guid id)
+    {
+        var response = await SendAsync(HttpMethod.Post, $"api/orders/{id}/mark-ready");
+        if (response.IsSuccessStatusCode) return (true, null);
+        return (false, await TryReadErrorMessage(response) ?? "No pudimos actualizar el pedido.");
+    }
+
+    public async Task<(bool Success, string? Error)> MarkOrderCompletedAsync(Guid id)
+    {
+        var response = await SendAsync(HttpMethod.Post, $"api/orders/{id}/mark-completed");
+        if (response.IsSuccessStatusCode) return (true, null);
+        return (false, await TryReadErrorMessage(response) ?? "No pudimos actualizar el pedido.");
+    }
 
     private static async Task<string?> TryReadErrorMessage(HttpResponseMessage response)
     {

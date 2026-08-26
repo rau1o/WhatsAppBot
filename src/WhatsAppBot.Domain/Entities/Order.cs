@@ -11,6 +11,9 @@ public class Order
     public DateTime CreatedAt { get; set; }
     public List<OrderItem> Items { get; set; } = new();
 
+    // Nulo hasta que se aprueba el pago — recién ahí empieza a tener sentido
+    // el seguimiento de preparación física del pedido.
+    public OrderFulfillmentStatus? FulfillmentStatus { get; set; }
     public decimal Total => Items.Sum(i => i.UnitPrice * i.Quantity);
 
     // Regla de negocio simple pero que pertenece acá, no al StateHandler:
@@ -23,7 +26,7 @@ public class Order
         var existing = Items.FirstOrDefault(i => i.ProductId == product.Id);
         if (existing is not null)
         {
-            existing.Quantity += 1;
+            existing.Quantity += quantity;
             return;
         }
 

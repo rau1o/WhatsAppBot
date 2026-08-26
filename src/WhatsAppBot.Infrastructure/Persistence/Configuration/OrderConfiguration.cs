@@ -16,6 +16,11 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
             .HasConversion<string>()
             .HasMaxLength(32)
             .IsRequired();
+        // Nullable a propósito — sin conversión "IsRequired", queda NULL
+        // hasta que se aprueba el pago.
+        builder.Property(o => o.FulfillmentStatus)
+            .HasConversion<string>()
+            .HasMaxLength(32);
 
         builder.HasMany(o => o.Items)
             .WithOne()
@@ -23,7 +28,7 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasIndex(o => new { o.ConversationId, o.Status });
-
+        builder.HasIndex(o => new { o.TenantId, o.FulfillmentStatus });
         // Total es una propiedad calculada en memoria (Items.Sum(...)),
         // no una columna — EF Core la ignora automáticamente al no tener
         // setter, pero lo dejamos explícito por claridad.

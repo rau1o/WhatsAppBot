@@ -92,8 +92,12 @@ public class PaymentProofsController : ControllerBase
         if (approve)
         {
             conversation.State = ConversationState.Confirmed;
+            order.FulfillmentStatus = OrderFulfillmentStatus.Pending; // arranca el seguimiento de preparación
+            await _orders.SaveAsync(order, ct);
+
             await _sender.SendTextAsync(tenant.WhatsAppPhoneNumberId, conversation.CustomerPhoneNumber,
                 "¡Confirmamos tu pago! 🎉 Tu pedido ya está en preparación. Gracias por tu compra.", ct);
+
         }
         else
         {

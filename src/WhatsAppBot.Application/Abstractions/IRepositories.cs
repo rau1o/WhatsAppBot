@@ -1,4 +1,5 @@
 using WhatsAppBot.Domain.Entities;
+using WhatsAppBot.Domain.Enums;
 
 namespace WhatsAppBot.Application.Abstractions;
 
@@ -39,6 +40,12 @@ public interface IOrderRepository
     // misma conversación, esto va a necesitar desambiguar por fecha o por
     // un Id de pedido explícito en vez de "el último".
     Task<Order?> GetLatestForConversationAsync(Guid conversationId, CancellationToken ct);
+
+    // Para el panel admin: pedidos en preparación (aprobados, listos, o
+    // entregados), del tenant actual. Excluye Draft/Submitted/Abandoned —
+    // esos todavía no pasaron por la aprobación de un comprobante.
+    Task<IReadOnlyList<Order>> ListByFulfillmentStatusAsync(OrderFulfillmentStatus status, CancellationToken ct);
+
     // Devuelve false si no se pudo aplicar el cambio (ej. conflicto de
     // concurrencia) — el caller NUNCA debe asumir éxito sin chequear esto.
     Task<bool> SaveAsync(Order order, CancellationToken ct);
