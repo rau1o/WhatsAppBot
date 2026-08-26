@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.EntityFrameworkCore;
 using WhatsAppBot.AdminPanel.Components;
 using WhatsAppBot.AdminPanel.Services;
 
@@ -18,7 +20,22 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+// El disco de Railway es efímero — sin esto, cada redeploy generaba claves
+// de Data Protection nuevas, y con ellas cualquier sesión guardada vía
+// ProtectedSessionStorage (ver Login.razor/MainLayout.razor) quedaba
+// indescifrable: todos los usuarios logueados perdían su sesión en cada
+// deploy, en silencio. Guardamos las claves en la misma base de Supabase
+// para que sobrevivan el redeploy — la única excepción a "el panel no
+// toca la base directamente" en todo este proyecto.
+var dataProtectionConnectionString = builder.Configuration.GetConnectionString("DataProtection")
+    ?? throw new InvalidOperationException("Falta la connection string 'DataProtection' en appsettings.json");
 
+builder.Services.AddDbContext<DataProtectionKeysDbContext>(options =>
+    options.UseNpgsql(dataProtectionConnectionString));
+
+builder.Services.AddDataProtection()
+    .SetApplicationName("WhatsAppBotAdminPanel")
+    .PersistKeysToDbContext<DataProtectionKeysDbContext>();
 // Este esquema Cookie NUNCA se usa para iniciar sesión de verdad (jamás
 // llamamos SignInAsync) — existe solo para que ASP.NET Core sepa a dónde
 // mandar la PRIMERA carga HTTP completa de una página [Authorize] cuando
@@ -51,6 +68,16 @@ builder.Services.AddHttpClient("Nominatim", client =>
 builder.Services.AddScoped<GeocodingService>();
 
 var app = builder.Build();
+
+// Tabla mínima (una sola, sin relación con nada del negocio) — EnsureCreated
+// alcanza acá, no hace falta el flujo completo de migraciones de EF que
+// usamos del lado del Api. Microsoft recomienda este approach puntualmente
+// para el caso de las claves de Data Protection.
+using (var scope = app.Services.CreateScope())
+{
+    var dataProtectionDb = scope.ServiceProvider.GetRequiredService<DataProtectionKeysDbContext>();
+    dataProtectionDb.Database.EnsureCreated();
+}
 
 if (!app.Environment.IsDevelopment())
 {

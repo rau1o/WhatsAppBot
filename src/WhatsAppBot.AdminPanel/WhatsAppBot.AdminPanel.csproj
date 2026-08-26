@@ -8,7 +8,14 @@
   </PropertyGroup>
 
   <!-- Proyecto separado a propósito: el panel es un consumidor más de la
-       API, igual que cualquier integración futura. No referencia ningún
-       otro proyecto de la solución — todo lo que necesita lo pide por HTTP. -->
+       API, igual que cualquier integración futura. Todo el negocio lo pide
+       por HTTP — la ÚNICA excepción es esta: persistir las claves de Data
+       Protection en la misma base de Postgres, para que sobrevivan un
+       redeploy en Railway (su disco es efímero). Sin esto, cada redeploy
+       deslogueaba a todos los usuarios en silencio. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="8.0.8" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.10" />
+  </ItemGroup>
 
 </Project>
