@@ -70,7 +70,7 @@ public class CatalogStateHandler : IStateHandler
         // Primer mensaje en este estado, pidió ver más productos, o no
         // entendimos lo que mandó — en todos los casos, mostramos el catálogo.
         await SendCatalogAsync(tenant, phoneNumberId, to, ct);
-        return new StateResult(ConversationState.BrowsingCatalog, ContinueImmediately: true);
+        return new StateResult(ConversationState.BrowsingCatalog);
 
     }
     private async Task ShowOrderSoFarAsync(Tenant tenant, Conversation conversation, string phoneNumberId, string to, CancellationToken ct)

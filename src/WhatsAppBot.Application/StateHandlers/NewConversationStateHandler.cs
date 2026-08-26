@@ -46,6 +46,7 @@ public class NewConversationStateHandler : IStateHandler
             ct);
 
         // Fase 1 termina acá. En fase 2, sigue directo a BrowsingCatalog.
-        return new StateResult(ConversationState.BrowsingCatalog);
+        return new StateResult(ConversationState.BrowsingCatalog, ContinueImmediately: true);
+
     }
 }
