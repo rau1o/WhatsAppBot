@@ -96,28 +96,44 @@ namespace WhatsAppBot.Infrastructure.Identity
                 || string.IsNullOrWhiteSpace(ownerEmail) || string.IsNullOrWhiteSpace(ownerPassword))
                 return;
 
-            if (await db.Tenants.IgnoreQueryFilters().AnyAsync(t => t.WhatsAppPhoneNumberId == phoneNumberId))
+            var existingTenant = await db.Tenants.IgnoreQueryFilters()
+               .FirstOrDefaultAsync(t => t.WhatsAppPhoneNumberId == phoneNumberId);
+
+            Tenant newTenant;
+            if (existingTenant is not null)
             {
-                Console.WriteLine($"[NEW TENANT] Ya existe un tenant con WhatsAppPhoneNumberId = {phoneNumberId} — no se creó nada.");
-                return;
+                // El tenant ya existe (probablemente porque la vez anterior
+                // el usuario falló, ej. por la política de contraseñas) —
+                // no lo recreamos, pero seguimos igual para intentar crear
+                // el usuario que falta.
+                Console.WriteLine($"[NEW TENANT] Ya existe un tenant con WhatsAppPhoneNumberId = {phoneNumberId} — reintentando solo la creación del usuario.");
+                newTenant = existingTenant;
+            }
+            else
+            {
+                newTenant = new Tenant
+                {
+                    Id = Guid.NewGuid(),
+                    Name = name,
+                    WhatsAppPhoneNumberId = phoneNumberId,
+                    // Datos placeholder — el dueño los completa desde el panel
+                    // (Configuración) apenas entra por primera vez.
+                    LocationLatitude = 0,
+                    LocationLongitude = 0,
+                    LocationName = name,
+                    LocationAddress = "Pendiente de configurar desde el panel",
+                    FacadePhotoUrl = "",
+                    PaymentQrImageUrl = null
+                };
+                db.Tenants.Add(newTenant);
+                await db.SaveChangesAsync();
             }
 
-            var newTenant = new Tenant
+            if (await userManager.FindByEmailAsync(ownerEmail) is not null)
             {
-                Id = Guid.NewGuid(),
-                Name = name,
-                WhatsAppPhoneNumberId = phoneNumberId,
-                // Datos placeholder — el dueño los completa desde el panel
-                // (Configuración) apenas entra por primera vez.
-                LocationLatitude = 0,
-                LocationLongitude = 0,
-                LocationName = name,
-                LocationAddress = "Pendiente de configurar desde el panel",
-                FacadePhotoUrl = "",
-                PaymentQrImageUrl = null
-            };
-            db.Tenants.Add(newTenant);
-            await db.SaveChangesAsync();
+                Console.WriteLine($"[NEW TENANT] Ya existe un usuario con el email {ownerEmail} — no se tocó nada más.");
+                return;
+            }
 
             var owner = new AppUser
             {
@@ -139,6 +155,7 @@ namespace WhatsAppBot.Infrastructure.Identity
             await userManager.AddToRoleAsync(owner, TenantRoles.Owner);
 
             Console.WriteLine($"[NEW TENANT] Tenant '{name}' creado (Id {newTenant.Id}). Owner: {ownerEmail}.");
+
         }
     }
 }
