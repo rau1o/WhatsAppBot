@@ -74,6 +74,71 @@ namespace WhatsAppBot.Infrastructure.Identity
                 await userManager.CreateAsync(user, "Admin123!");
                 await userManager.AddToRoleAsync(user, TenantRoles.Owner);
             }
+
+            await CreateTenantIfRequestedAsync(db, userManager);
+        }
+
+        // "Alta de tenant" de emergencia: hoy no hay UI para esto (pendiente
+        // conocido del proyecto). Igual que el resto de los mecanismos acá,
+        // solo actúa si se setean estas 4 variables de entorno EXPLÍCITAMENTE
+        // — y como SeedAsync solo se llama dentro del bloque
+        // `if (app.Environment.IsDevelopment())` de Program.cs, nunca corre
+        // en Railway (que corre como Production), así que es seguro dejarlo
+        // en el código de forma permanente.
+        private static async Task CreateTenantIfRequestedAsync(Persistence.WhatsAppBotDbContext db, UserManager<AppUser> userManager)
+        {
+            var name = Environment.GetEnvironmentVariable("NEW_TENANT_NAME");
+            var phoneNumberId = Environment.GetEnvironmentVariable("NEW_TENANT_PHONE_NUMBER_ID");
+            var ownerEmail = Environment.GetEnvironmentVariable("NEW_TENANT_OWNER_EMAIL");
+            var ownerPassword = Environment.GetEnvironmentVariable("NEW_TENANT_OWNER_PASSWORD");
+
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(phoneNumberId)
+                || string.IsNullOrWhiteSpace(ownerEmail) || string.IsNullOrWhiteSpace(ownerPassword))
+                return;
+
+            if (await db.Tenants.IgnoreQueryFilters().AnyAsync(t => t.WhatsAppPhoneNumberId == phoneNumberId))
+            {
+                Console.WriteLine($"[NEW TENANT] Ya existe un tenant con WhatsAppPhoneNumberId = {phoneNumberId} — no se creó nada.");
+                return;
+            }
+
+            var newTenant = new Tenant
+            {
+                Id = Guid.NewGuid(),
+                Name = name,
+                WhatsAppPhoneNumberId = phoneNumberId,
+                // Datos placeholder — el dueño los completa desde el panel
+                // (Configuración) apenas entra por primera vez.
+                LocationLatitude = 0,
+                LocationLongitude = 0,
+                LocationName = name,
+                LocationAddress = "Pendiente de configurar desde el panel",
+                FacadePhotoUrl = "",
+                PaymentQrImageUrl = null
+            };
+            db.Tenants.Add(newTenant);
+            await db.SaveChangesAsync();
+
+            var owner = new AppUser
+            {
+                UserName = ownerEmail,
+                Email = ownerEmail,
+                TenantId = newTenant.Id,
+                DisplayName = "Owner",
+                EmailConfirmed = true
+            };
+
+            var result = await userManager.CreateAsync(owner, ownerPassword);
+            if (!result.Succeeded)
+            {
+                Console.WriteLine($"[NEW TENANT] El tenant '{name}' se creó (Id {newTenant.Id}), pero el usuario falló: " +
+                    string.Join("; ", result.Errors.Select(e => e.Description)));
+                return;
+            }
+
+            await userManager.AddToRoleAsync(owner, TenantRoles.Owner);
+
+            Console.WriteLine($"[NEW TENANT] Tenant '{name}' creado (Id {newTenant.Id}). Owner: {ownerEmail}.");
         }
     }
 }
