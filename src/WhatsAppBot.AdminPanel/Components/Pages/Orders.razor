@@ -62,9 +62,14 @@ else
 
                 @if (_activeTab == "pending")
                 {
-                    <button class="btn-link" @onclick="() => MarkReady(order)" disabled="@_processingId.HasValue">
-                        Marcar listo para recoger
-                    </button>
+                    <div class="order-card-actions">
+                        <button class="btn-link btn-link-muted" @onclick="() => UndoApproval(order)" disabled="@_processingId.HasValue">
+                            Deshacer aprobación
+                        </button>
+                        <button class="btn-link" @onclick="() => MarkReady(order)" disabled="@_processingId.HasValue">
+                            Marcar listo para recoger
+                        </button>
+                    </div>
                 }
                 else if (_activeTab == "ready")
                 {
@@ -127,6 +132,17 @@ else
         if (!confirmed) return;
 
         await Process(order, () => Api.MarkOrderReadyAsync(order.Id));
+    }
+
+    private async Task UndoApproval(FulfillmentOrderDto order)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            $"¿Deshacer la aprobación del pedido de {order.CustomerPhoneNumber}? " +
+            "El comprobante vuelve a quedar pendiente de revisión en \"Comprobantes\", y este pedido sale de la lista de preparación. " +
+            "Usá esto solo si aprobaste algo por error.");
+        if (!confirmed) return;
+
+        await Process(order, () => Api.UndoOrderApprovalAsync(order.Id));
     }
 
     private async Task MarkCompleted(FulfillmentOrderDto order)
