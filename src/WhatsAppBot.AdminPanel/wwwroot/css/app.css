@@ -514,6 +514,11 @@ textarea { resize: vertical; min-height: 2.5rem; }
 .report-stat-label { color: var(--color-text-muted); font-size: 0.85rem; }
 .report-stat-value { font-size: 1.6rem; font-weight: 700; }
 
+.report-delta { font-size: 0.8rem; font-weight: 600; }
+.report-delta-positive { color: var(--color-success-text, #1a7f37); }
+.report-delta-negative { color: var(--color-danger); }
+.report-comparison-note { margin: -0.75rem 0 1.5rem; font-size: 0.85rem; }
+
 .top-products, .daily-sales { display: flex; flex-direction: column; gap: 0.6rem; }
 .top-product-row, .daily-sales-row {
   display: grid;

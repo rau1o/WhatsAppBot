@@ -1,12 +1,20 @@
 @page "/reports"
 @attribute [Authorize(Roles = "Owner,Manager")]
+@using Microsoft.AspNetCore.Components.Rendering
 @inject ApiClient Api
+@inject IJSRuntime JS
 
 <div class="page-header">
     <div>
         <h1>Reportes</h1>
         <p class="page-subtitle">Ventas, pedidos y productos más vendidos.</p>
     </div>
+    @if (_report is not null)
+    {
+        <button class="btn btn-ghost" @onclick="ExportToExcel" disabled="@_exporting">
+            @(_exporting ? "Generando..." : "Exportar a Excel")
+        </button>
+    }
 </div>
 
 <div class="report-filters">
@@ -38,16 +46,25 @@ else if (_report is not null)
         <div class="card report-stat">
             <span class="report-stat-label">Total vendido</span>
             <span class="report-stat-value">Bs @_report.Summary.TotalRevenue.ToString("N2")</span>
+            @DeltaBadge(_report.Summary.TotalRevenue, _report.PreviousPeriodSummary.TotalRevenue)
         </div>
         <div class="card report-stat">
             <span class="report-stat-label">Pedidos</span>
             <span class="report-stat-value">@_report.Summary.OrderCount</span>
+            @DeltaBadge(_report.Summary.OrderCount, _report.PreviousPeriodSummary.OrderCount)
         </div>
         <div class="card report-stat">
             <span class="report-stat-label">Ticket promedio</span>
             <span class="report-stat-value">Bs @_report.Summary.AverageOrderValue.ToString("N2")</span>
+            @DeltaBadge(_report.Summary.AverageOrderValue, _report.PreviousPeriodSummary.AverageOrderValue)
         </div>
     </div>
+
+    <p class="muted report-comparison-note">
+        Comparado con el período anterior (@((_report.To.DayNumber - _report.From.DayNumber + 1)) días previos, misma duración) — 
+        <strong>Bs @_report.PreviousPeriodSummary.TotalRevenue.ToString("N2")</strong> vendidos, 
+        <strong>@_report.PreviousPeriodSummary.OrderCount</strong> pedido@(_report.PreviousPeriodSummary.OrderCount == 1 ? "" : "s").
+    </p>
 
     <div class="card">
         <h2>Productos más vendidos</h2>
@@ -103,6 +120,7 @@ else if (_report is not null)
 @code {
     private SalesReportDto? _report;
     private bool _loading = true;
+    private bool _exporting;
     private string? _error;
     private string _preset = "30d";
     private DateOnly _from = DateOnly.FromDateTime(DateTime.Today).AddDays(-29);
@@ -152,4 +170,51 @@ else if (_report is not null)
         }
         _loading = false;
     }
+
+    private async Task ExportToExcel()
+    {
+        _exporting = true;
+        _error = null;
+
+        var (bytes, error) = await Api.ExportSalesReportAsync(_from, _to);
+
+        _exporting = false;
+
+        if (bytes is null)
+        {
+            _error = error;
+            return;
+        }
+
+        var fileName = $"reporte-ventas-{_from:yyyyMMdd}-{_to:yyyyMMdd}.xlsx";
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("fileDownload.downloadFromBytes", base64, fileName,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    // Verde si mejoró respecto al período anterior, rojo si empeoró, gris si
+    // no hay con qué comparar (período anterior en cero).
+    private RenderFragment DeltaBadge(decimal current, decimal previous) => builder =>
+    {
+        if (previous == 0)
+        {
+            if (current == 0) return;
+            builder.OpenElement(0, "span");
+            builder.AddAttribute(1, "class", "report-delta report-delta-positive");
+            builder.AddContent(2, "Nuevo");
+            builder.CloseElement();
+            return;
+        }
+
+        var changePercent = (current - previous) / previous * 100;
+        var cssClass = changePercent >= 0 ? "report-delta-positive" : "report-delta-negative";
+        var arrow = changePercent >= 0 ? "▲" : "▼";
+
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", $"report-delta {cssClass}");
+        builder.AddContent(2, $"{arrow} {Math.Abs(changePercent):N0}%");
+        builder.CloseElement();
+    };
+
+    private RenderFragment DeltaBadge(int current, int previous) => DeltaBadge((decimal)current, (decimal)previous);
 }

@@ -313,6 +313,20 @@ public class ApiClient
 
         return await response.Content.ReadFromJsonAsync<SalesReportDto>();
     }
+    // Devuelve los bytes crudos del .xlsx — Reports.razor los pasa a JS para
+    // disparar la descarga en el browser (ver wwwroot/js/fileDownload.js).
+    // No se puede usar un <a href> directo porque el endpoint necesita el
+    // JWT en el header Authorization, que un link normal no manda.
+    public async Task<(byte[]? Bytes, string? Error)> ExportSalesReportAsync(DateOnly from, DateOnly to)
+    {
+        var url = $"api/reports/sales/export?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}";
+        var response = await SendAsync(HttpMethod.Get, url);
+
+        if (!response.IsSuccessStatusCode)
+            return (null, await TryReadErrorMessage(response) ?? "No pudimos generar el archivo.");
+
+        return (await response.Content.ReadAsByteArrayAsync(), null);
+    }
 
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, object? body = null)
     {

@@ -24,4 +24,4 @@ public record FulfillmentOrderDto(Guid Id, string CustomerPhoneNumber, decimal T
 public record SalesSummaryDto(decimal TotalRevenue, int OrderCount, decimal AverageOrderValue);
 public record TopProductDto(string ProductName, int QuantitySold, decimal Revenue);
 public record DailySalesDto(DateOnly Date, decimal Total, int OrderCount);
-public record SalesReportDto(DateOnly From, DateOnly To, SalesSummaryDto Summary, List<TopProductDto> TopProducts, List<DailySalesDto> DailySales);
+public record SalesReportDto(DateOnly From, DateOnly To, SalesSummaryDto Summary, SalesSummaryDto PreviousPeriodSummary, List<TopProductDto> TopProducts, List<DailySalesDto> DailySales);
