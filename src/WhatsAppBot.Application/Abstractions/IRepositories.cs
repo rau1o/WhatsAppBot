@@ -46,6 +46,12 @@ public interface IOrderRepository
     // esos todavía no pasaron por la aprobación de un comprobante.
     Task<IReadOnlyList<Order>> ListByFulfillmentStatusAsync(OrderFulfillmentStatus status, CancellationToken ct);
 
+    // Para reportes: pedidos REALMENTE pagos (FulfillmentStatus no nulo —
+    // se activa recién cuando se aprueba el comprobante) creados dentro del
+    // rango. Un Draft o un Abandoned nunca representa una venta real, así
+    // que no cuentan acá aunque tengan Items cargados.
+    Task<IReadOnlyList<Order>> ListPaidOrdersInRangeAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct);
+
     // Devuelve false si no se pudo aplicar el cambio (ej. conflicto de
     // concurrencia) — el caller NUNCA debe asumir éxito sin chequear esto.
     Task<bool> SaveAsync(Order order, CancellationToken ct);

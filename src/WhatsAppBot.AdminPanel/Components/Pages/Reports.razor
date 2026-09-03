@@ -1,0 +1,155 @@
+@page "/reports"
+@attribute [Authorize(Roles = "Owner,Manager")]
+@inject ApiClient Api
+
+<div class="page-header">
+    <div>
+        <h1>Reportes</h1>
+        <p class="page-subtitle">Ventas, pedidos y productos más vendidos.</p>
+    </div>
+</div>
+
+<div class="report-filters">
+    <button class="btn-link @(_preset == "today" ? "btn-link-active" : "")" @onclick='() => ApplyPreset("today")'>Hoy</button>
+    <button class="btn-link @(_preset == "week" ? "btn-link-active" : "")" @onclick='() => ApplyPreset("week")'>Esta semana</button>
+    <button class="btn-link @(_preset == "month" ? "btn-link-active" : "")" @onclick='() => ApplyPreset("month")'>Este mes</button>
+    <button class="btn-link @(_preset == "30d" ? "btn-link-active" : "")" @onclick='() => ApplyPreset("30d")'>Últimos 30 días</button>
+
+    <div class="report-custom-range">
+        <input type="date" @bind="_from" @bind:event="onchange" />
+        <span class="muted">a</span>
+        <input type="date" @bind="_to" @bind:event="onchange" />
+        <button class="btn btn-ghost" @onclick="ApplyCustomRange">Aplicar</button>
+    </div>
+</div>
+
+@if (_error is not null)
+{
+    <div class="alert alert-error">@_error</div>
+}
+
+@if (_loading)
+{
+    <p class="muted">Cargando reporte...</p>
+}
+else if (_report is not null)
+{
+    <div class="report-summary">
+        <div class="card report-stat">
+            <span class="report-stat-label">Total vendido</span>
+            <span class="report-stat-value">Bs @_report.Summary.TotalRevenue.ToString("N2")</span>
+        </div>
+        <div class="card report-stat">
+            <span class="report-stat-label">Pedidos</span>
+            <span class="report-stat-value">@_report.Summary.OrderCount</span>
+        </div>
+        <div class="card report-stat">
+            <span class="report-stat-label">Ticket promedio</span>
+            <span class="report-stat-value">Bs @_report.Summary.AverageOrderValue.ToString("N2")</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Productos más vendidos</h2>
+        @if (_report.TopProducts.Count == 0)
+        {
+            <p class="muted">No hubo ventas en este período.</p>
+        }
+        else
+        {
+            var maxQuantity = _report.TopProducts.Max(p => p.QuantitySold);
+            <div class="top-products">
+                @foreach (var product in _report.TopProducts)
+                {
+                    <div class="top-product-row">
+                        <span class="top-product-name">@product.ProductName</span>
+                        <div class="top-product-bar-track">
+                            <div class="top-product-bar" style="width: @(maxQuantity > 0 ? product.QuantitySold * 100 / maxQuantity : 0)%"></div>
+                        </div>
+                        <span class="top-product-qty">@product.QuantitySold u.</span>
+                        <span class="top-product-revenue muted">Bs @product.Revenue.ToString("N0")</span>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="card">
+        <h2>Ventas por día</h2>
+        @if (_report.DailySales.Count == 0)
+        {
+            <p class="muted">No hubo ventas en este período.</p>
+        }
+        else
+        {
+            var maxDaily = _report.DailySales.Max(d => d.Total);
+            <div class="daily-sales">
+                @foreach (var day in _report.DailySales)
+                {
+                    <div class="daily-sales-row">
+                        <span class="daily-sales-date">@day.Date.ToString("dd/MM")</span>
+                        <div class="top-product-bar-track">
+                            <div class="top-product-bar" style="width: @(maxDaily > 0 ? day.Total * 100 / maxDaily : 0)%"></div>
+                        </div>
+                        <span class="daily-sales-total">Bs @day.Total.ToString("N0")</span>
+                        <span class="muted">(@day.OrderCount pedido@(day.OrderCount == 1 ? "" : "s"))</span>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private SalesReportDto? _report;
+    private bool _loading = true;
+    private string? _error;
+    private string _preset = "30d";
+    private DateOnly _from = DateOnly.FromDateTime(DateTime.Today).AddDays(-29);
+    private DateOnly _to = DateOnly.FromDateTime(DateTime.Today);
+
+    protected override async Task OnInitializedAsync() => await LoadReport();
+
+    private async Task ApplyPreset(string preset)
+    {
+        _preset = preset;
+        var today = DateOnly.FromDateTime(DateTime.Today);
+
+        (_from, _to) = preset switch
+        {
+            "today" => (today, today),
+            "week" => (today.AddDays(-DaysSinceMonday(today)), today),
+            "month" => (new DateOnly(today.Year, today.Month, 1), today),
+            _ => (today.AddDays(-29), today) // 30d
+        };
+
+        await LoadReport();
+    }
+
+    // DayOfWeek.Sunday = 0 en .NET, así que un cálculo ingenuo tipo
+    // "-(int)DayOfWeek + 1" manda para ADELANTE en vez de para atrás
+    // específicamente los domingos. Esta fórmula lo cubre para los 7 días.
+    private static int DaysSinceMonday(DateOnly date) => ((int)date.DayOfWeek + 6) % 7;
+
+    private async Task ApplyCustomRange()
+    {
+        _preset = "";
+        await LoadReport();
+    }
+
+    private async Task LoadReport()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _report = await Api.GetSalesReportAsync(_from, _to);
+            if (_report is null) _error = "No pudimos cargar el reporte. Probá de nuevo.";
+        }
+        catch (Exception)
+        {
+            _error = "No pudimos cargar el reporte. Probá de nuevo en unos segundos.";
+        }
+        _loading = false;
+    }
+}

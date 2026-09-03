@@ -204,6 +204,8 @@ public class ApiClient
     public async Task<(TenantSettingsDto? Result, string? Error)> UploadTenantImageAsync(
         string slot, Stream fileStream, string fileName, string contentType)
     {
+        await EnsureFreshTokenAsync();
+
         using var content = new MultipartFormDataContent();
         using var streamContent = new StreamContent(fileStream);
         streamContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
@@ -299,9 +301,23 @@ public class ApiClient
             return null;
         }
     }
+    public async Task<SalesReportDto?> GetSalesReportAsync(DateOnly? from, DateOnly? to)
+    {
+        var query = new List<string>();
+        if (from is not null) query.Add($"from={from:yyyy-MM-dd}");
+        if (to is not null) query.Add($"to={to:yyyy-MM-dd}");
+        var url = "api/reports/sales" + (query.Count > 0 ? "?" + string.Join("&", query) : "");
+
+        var response = await SendAsync(HttpMethod.Get, url);
+        if (!response.IsSuccessStatusCode) return null;
+
+        return await response.Content.ReadFromJsonAsync<SalesReportDto>();
+    }
 
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, object? body = null)
     {
+        await EnsureFreshTokenAsync();
+
         var request = new HttpRequestMessage(method, url);
 
         if (_authState.Token is not null)

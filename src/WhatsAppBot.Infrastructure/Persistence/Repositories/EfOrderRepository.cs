@@ -63,7 +63,16 @@ public class EfOrderRepository : IOrderRepository
             .OrderBy(o => o.CreatedAt) // los más viejos primero — son los que llevan más tiempo esperando
             .ToListAsync(ct);
     }
+    public async Task<IReadOnlyList<Order>> ListPaidOrdersInRangeAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct)
+    {
+        RequireTenantId();
 
+        return await _db.Orders
+            .Include(o => o.Items)
+            .Where(o => o.FulfillmentStatus != null && o.CreatedAt >= fromUtc && o.CreatedAt <= toUtc)
+            .OrderBy(o => o.CreatedAt)
+            .ToListAsync(ct);
+    }
     public async Task<bool> SaveAsync(Order order, CancellationToken ct)
     {
         // OrderItem usa una clave (Guid) generada por nuestro código, no por

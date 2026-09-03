@@ -478,3 +478,64 @@ textarea { resize: vertical; min-height: 2.5rem; }
   .page-header { flex-direction: column; }
   .field-row { flex-direction: column; align-items: stretch; }
 }
+
+/* ---------- Reportes ---------- */
+
+.report-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.btn-link-active { color: var(--color-text); font-weight: 600; text-decoration: underline; }
+.report-custom-range {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+.report-custom-range input[type="date"] {
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  font-size: 0.85rem;
+}
+
+.report-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.report-stat { display: flex; flex-direction: column; gap: 0.35rem; }
+.report-stat-label { color: var(--color-text-muted); font-size: 0.85rem; }
+.report-stat-value { font-size: 1.6rem; font-weight: 700; }
+
+.top-products, .daily-sales { display: flex; flex-direction: column; gap: 0.6rem; }
+.top-product-row, .daily-sales-row {
+  display: grid;
+  grid-template-columns: 140px 1fr auto auto;
+  align-items: center;
+  gap: 0.75rem;
+}
+.top-product-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.daily-sales-date { font-family: var(--font-mono); font-size: 0.85rem; }
+.top-product-bar-track {
+  background: var(--color-bg);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+.top-product-bar { background: var(--color-accent, #1F6F50); height: 100%; border-radius: 999px; }
+.top-product-qty, .daily-sales-total { font-weight: 600; white-space: nowrap; }
+.top-product-revenue { white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .report-summary { grid-template-columns: 1fr; }
+  .top-product-row, .daily-sales-row { grid-template-columns: 90px 1fr auto; }
+  .top-product-revenue { display: none; }
+  .report-custom-range { margin-left: 0; width: 100%; }
+}

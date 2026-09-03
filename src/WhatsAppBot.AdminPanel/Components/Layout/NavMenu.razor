@@ -15,6 +15,14 @@
         <span>Pedidos</span>
     </NavLink>
 
+    <AuthorizeView Roles="Owner,Manager">
+        <Authorized>
+            <NavLink href="/reports" class="nav-link" Match="NavLinkMatch.Prefix">
+                <span>Reportes</span>
+            </NavLink>
+        </Authorized>
+    </AuthorizeView>
+
     <AuthorizeView Roles="Owner">
         <Authorized>
             <NavLink href="/users" class="nav-link" Match="NavLinkMatch.Prefix">

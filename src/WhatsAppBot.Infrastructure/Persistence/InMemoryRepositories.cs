@@ -98,6 +98,14 @@ public class InMemoryOrderRepository : IOrderRepository
             .ToList();
         return Task.FromResult(result);
     }
+    public Task<IReadOnlyList<Order>> ListPaidOrdersInRangeAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct)
+    {
+        IReadOnlyList<Order> result = _draftsByConversation.Values
+            .Where(o => o.FulfillmentStatus != null && o.CreatedAt >= fromUtc && o.CreatedAt <= toUtc)
+            .OrderBy(o => o.CreatedAt)
+            .ToList();
+        return Task.FromResult(result);
+    }
 
 }
 
