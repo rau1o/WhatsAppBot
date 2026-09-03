@@ -34,7 +34,15 @@ public class EfPaymentProofRepository : IPaymentProofRepository
             .OrderBy(p => p.CreatedAt)
             .ToListAsync(ct);
     }
+    public async Task<PaymentProof?> GetLatestApprovedForOrderAsync(Guid orderId, CancellationToken ct)
+    {
+        RequireTenantId();
 
+        return await _db.PaymentProofs
+            .Where(p => p.OrderId == orderId && p.Status == PaymentProofStatus.Approved)
+            .OrderByDescending(p => p.ReviewedAt)
+            .FirstOrDefaultAsync(ct);
+    }
     public async Task UpdateAsync(PaymentProof proof, CancellationToken ct)
     {
         _db.PaymentProofs.Update(proof);

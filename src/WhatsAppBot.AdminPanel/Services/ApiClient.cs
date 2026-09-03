@@ -260,6 +260,13 @@ public class ApiClient
         return (false, await TryReadErrorMessage(response) ?? "No pudimos actualizar el pedido.");
     }
 
+    public async Task<(bool Success, string? Error)> UndoOrderApprovalAsync(Guid id)
+    {
+        var response = await SendAsync(HttpMethod.Post, $"api/orders/{id}/undo-approval");
+        if (response.IsSuccessStatusCode) return (true, null);
+        return (false, await TryReadErrorMessage(response) ?? "No pudimos deshacer la aprobación.");
+    }
+
     private static async Task<string?> TryReadErrorMessage(HttpResponseMessage response)
     {
         try

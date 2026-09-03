@@ -128,7 +128,15 @@ public class InMemoryPaymentProofRepository : IPaymentProofRepository
             .ToList();
         return Task.FromResult(result);
     }
-
+    public Task<PaymentProof?> GetLatestApprovedForOrderAsync(Guid orderId, CancellationToken ct)
+    {
+        var tenantId = RequireTenantId();
+        var result = _proofs.Values
+            .Where(p => p.TenantId == tenantId && p.OrderId == orderId && p.Status == PaymentProofStatus.Approved)
+            .OrderByDescending(p => p.ReviewedAt)
+            .FirstOrDefault();
+        return Task.FromResult(result);
+    }
     public Task UpdateAsync(PaymentProof proof, CancellationToken ct)
     {
         _proofs[proof.Id] = proof;
