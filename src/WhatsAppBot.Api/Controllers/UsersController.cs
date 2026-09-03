@@ -7,7 +7,8 @@ namespace WhatsAppBot.Api.Controllers;
 
 [ApiController]
 [Route("api/users")]
-[Authorize(Roles = TenantRoles.Owner)] // gestionar usuarios es cosa del dueño de la tienda, no de cualquier empleado
+[Authorize(Policy = "RequireOwner")] // gestionar usuarios es cosa del dueño de la tienda, no de cualquier empleado
+
 public class UsersController : ControllerBase
 {
     private readonly IUserManagementService _users;

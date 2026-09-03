@@ -391,6 +391,14 @@ textarea { resize: vertical; min-height: 2.5rem; }
 .pill-warning { background: var(--color-warning-bg); color: var(--color-warning-text); }
 .pill-info { background: var(--color-info-bg); color: var(--color-info-text); }
 
+.role-select {
+  font-size: 0.85rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
 .actions { white-space: nowrap; }
 
 /* ---------- Estados vacíos / errores ---------- */

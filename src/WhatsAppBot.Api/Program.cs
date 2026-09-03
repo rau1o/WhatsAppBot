@@ -9,6 +9,7 @@ using System.Threading.RateLimiting;
 using WhatsAppBot.Api.Middleware;
 using WhatsAppBot.Api.Security;
 using WhatsAppBot.Application;
+using WhatsAppBot.Application.Abstractions;
 using WhatsAppBot.Infrastructure;
 using WhatsAppBot.Infrastructure.Identity;
 using WhatsAppBot.Infrastructure.Persistence;
@@ -30,6 +31,14 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 builder.Services.AddControllers();
+// Políticas centralizadas: agregar un rol nuevo o cambiar quién puede
+// acceder a qué sección es un cambio en UN solo lugar, en vez de rastrear
+// cada [Authorize(Roles = "...")] repetido por todos los controllers.
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("RequireOwner", policy => policy.RequireRole(TenantRoles.Owner))
+    // Pensada para secciones "de rendimiento del negocio" (ej. Reportes,
+    // cuando se construyan) — cualquiera Manager o superior, no solo Owner.
+    .AddPolicy("RequireManagerOrAbove", policy => policy.RequireRole(TenantRoles.Owner, TenantRoles.Manager));
 
 // El Api solo conoce estos dos métodos de extensión — no sabe
 // (ni le importa) qué handlers o adaptadores hay adentro de cada capa.

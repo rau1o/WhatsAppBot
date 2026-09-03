@@ -26,6 +26,9 @@ namespace WhatsAppBot.Infrastructure.Identity
             if (!await roleManager.RoleExistsAsync("Owner"))
                 await roleManager.CreateAsync(new IdentityRole<Guid>("Owner"));
 
+            if (!await roleManager.RoleExistsAsync(TenantRoles.Manager))
+                await roleManager.CreateAsync(new IdentityRole<Guid>(TenantRoles.Manager));
+
             if (!await roleManager.RoleExistsAsync(TenantRoles.Staff))
                 await roleManager.CreateAsync(new IdentityRole<Guid>(TenantRoles.Staff));
 
@@ -76,8 +79,47 @@ namespace WhatsAppBot.Infrastructure.Identity
             }
 
             await CreateTenantIfRequestedAsync(db, userManager);
-        }
+            await RunEmergencyPasswordResetIfRequestedAsync(userManager);
 
+        }
+        // "Romper vidrio": si el único Owner de un tenant pierde su
+        // contraseña, no hay forma de resetearla desde el panel (el
+        // endpoint de cambio de contraseña pide la actual, y no hay otro
+        // usuario que pueda hacerlo por él). Solo actúa si se setean estas
+        // 2 variables de entorno EXPLÍCITAMENTE — y como SeedAsync solo se
+        // llama dentro del bloque `if (app.Environment.IsDevelopment())` de
+        // Program.cs, nunca corre en Railway (que corre como Production),
+        // así que es seguro dejarlo en el código de forma permanente.
+        private static async Task RunEmergencyPasswordResetIfRequestedAsync(UserManager<AppUser> userManager)
+        {
+            var email = Environment.GetEnvironmentVariable("EMERGENCY_RESET_EMAIL");
+            var newPassword = Environment.GetEnvironmentVariable("EMERGENCY_RESET_PASSWORD");
+
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(newPassword)) return;
+
+            var user = await userManager.FindByEmailAsync(email);
+            if (user is null)
+            {
+                Console.WriteLine($"[EMERGENCY RESET] No existe ningún usuario con el email {email}.");
+                return;
+            }
+
+            var removeResult = await userManager.RemovePasswordAsync(user);
+            if (!removeResult.Succeeded)
+            {
+                Console.WriteLine($"[EMERGENCY RESET] No se pudo quitar la contraseña anterior: {string.Join("; ", removeResult.Errors.Select(e => e.Description))}");
+                return;
+            }
+
+            var addResult = await userManager.AddPasswordAsync(user, newPassword);
+            if (!addResult.Succeeded)
+            {
+                Console.WriteLine($"[EMERGENCY RESET] No se pudo setear la contraseña nueva: {string.Join("; ", addResult.Errors.Select(e => e.Description))}");
+                return;
+            }
+
+            Console.WriteLine($"[EMERGENCY RESET] Contraseña reseteada correctamente para {email}.");
+        }
         // "Alta de tenant" de emergencia: hoy no hay UI para esto (pendiente
         // conocido del proyecto). Igual que el resto de los mecanismos acá,
         // solo actúa si se setean estas 4 variables de entorno EXPLÍCITAMENTE

@@ -39,7 +39,7 @@ namespace WhatsAppBot.Api.Controllers
         // muestra a cualquier cliente que escriba (ubicación, fachada, QR de
         // cobro) — no es algo que cualquier empleado debería poder tocar.
         [HttpPut]
-        [Authorize(Roles = "Owner")]
+        [Authorize(Policy = "RequireOwner")]
         public async Task<IActionResult> Update([FromBody] UpdateTenantSettingsRequest request, CancellationToken ct)
         {
             var tenant = await GetCurrentTenantAsync(ct);
@@ -56,12 +56,12 @@ namespace WhatsAppBot.Api.Controllers
         }
 
         [HttpPost("facade-photo")]
-        [Authorize(Roles = "Owner")]
+        [Authorize(Policy = "RequireOwner")]
         public Task<IActionResult> UploadFacadePhoto(IFormFile file, CancellationToken ct)
             => UploadImageAsync(file, "facade", (tenant, url) => tenant.FacadePhotoUrl = url, ct);
 
         [HttpPost("payment-qr")]
-        [Authorize(Roles = "Owner")]
+        [Authorize(Policy = "RequireOwner")]
         public Task<IActionResult> UploadPaymentQr(IFormFile file, CancellationToken ct)
             => UploadImageAsync(file, "payment-qr", (tenant, url) => tenant.PaymentQrImageUrl = url, ct);
 

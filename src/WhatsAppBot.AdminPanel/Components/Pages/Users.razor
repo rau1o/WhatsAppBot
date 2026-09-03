@@ -56,6 +56,7 @@
             <label for="role">Rol</label>
             <select id="role" @bind="_draft.Role">
                 <option value="Staff">Staff</option>
+                <option value="Manager">Manager</option>
                 <option value="Owner">Owner</option>
             </select>
         </div>
@@ -97,7 +98,7 @@ else if (_users.Count > 0)
                     <td>@user.Email</td>
                     <td>@user.DisplayName</td>
                     <td>
-                        <span class="pill @(user.Role == "Owner" ? "pill-info" : "pill-inactive")">@user.Role</span>
+                        <span class="pill @RolePillClass(user.Role)">@user.Role</span>
                     </td>
                     <td>
                         <span class="pill @(user.IsActive ? "pill-active" : "pill-inactive")">
@@ -105,9 +106,11 @@ else if (_users.Count > 0)
                         </span>
                     </td>
                     <td class="actions">
-                        <button class="btn-link" @onclick="() => ToggleRole(user)">
-                            @(user.Role == "Owner" ? "Bajar a Staff" : "Ascender a Owner")
-                        </button>
+                        <select class="role-select" value="@user.Role" @onchange="e => ChangeRole(user, (string)e.Value!)">
+                            <option value="Staff">Staff</option>
+                            <option value="Manager">Manager</option>
+                            <option value="Owner">Owner</option>
+                        </select>
                         @if (user.IsActive)
                         {
                             <button class="btn-link btn-link-danger" @onclick="() => Deactivate(user)">Desactivar</button>
@@ -186,20 +189,29 @@ else if (_users.Count > 0)
         await LoadUsers();
     }
 
-    private async Task ToggleRole(UserDto user)
+    private async Task ChangeRole(UserDto user, string newRole)
     {
+        if (newRole == user.Role) return;
+
         _error = null;
-        var newRole = user.Role == "Owner" ? "Staff" : "Owner";
         var (success, error) = await Api.ChangeRoleAsync(user.Id, newRole);
 
         if (!success)
         {
             _error = error;
+            await LoadUsers(); // el <select> ya cambió visualmente en el browser — recargamos para volver a mostrar el rol real
             return;
         }
 
         await LoadUsers();
     }
+
+    private static string RolePillClass(string role) => role switch
+    {
+        "Owner" => "pill-info",
+        "Manager" => "pill-warning",
+        _ => "pill-inactive"
+    };
 
     private async Task Deactivate(UserDto user)
     {
