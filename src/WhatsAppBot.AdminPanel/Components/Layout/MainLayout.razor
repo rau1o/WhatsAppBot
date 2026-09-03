@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @inject AuthState AuthState
+@inject ApiClient Api
 @inject NavigationManager Nav
 
 <div class="app-shell">
@@ -27,9 +28,9 @@
 </div>
 
 @code {
-    private void Logout()
+    private async Task Logout()
     {
-        AuthState.Clear();
+        await Api.LogoutAsync();
         Nav.NavigateTo("/login", forceLoad: false);
     }
 }

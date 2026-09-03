@@ -1,32 +1,43 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using WhatsAppBot.Application.Abstractions;
+using WhatsAppBot.Infrastructure.Persistence;
 
 namespace WhatsAppBot.Infrastructure.Identity
 {
     public class AuthService : IAuthService
     {
+        // 30 días — el usuario que abre el panel de vez en cuando no tiene
+        // que volver a loguearse cada hora; el que lo usa activamente,
+        // gracias a la rotación en cada refresh, nunca ve este vencimiento
+        // mientras siga usándolo.
+        private static readonly TimeSpan RefreshTokenLifetime = TimeSpan.FromDays(30);
+
         private readonly UserManager<AppUser> _userManager;
         private readonly JwtTokenService _tokenService;
         private readonly IEmailSender _emailSender;
         private readonly AdminPanelOptions _adminPanelOptions;
-
+        private readonly WhatsAppBotDbContext _db;
         public AuthService(
             UserManager<AppUser> userManager,
             JwtTokenService tokenService,
             IEmailSender emailSender,
-            IOptions<AdminPanelOptions> adminPanelOptions)
+            IOptions<AdminPanelOptions> adminPanelOptions,
+            WhatsAppBotDbContext db)
         {
             _userManager = userManager;
             _tokenService = tokenService;
             _emailSender = emailSender;
             _adminPanelOptions = adminPanelOptions.Value;
+            _db = db;
         }
 
         public async Task<(bool Success, string? Error)> ChangePasswordAsync(
@@ -64,8 +75,9 @@ namespace WhatsAppBot.Infrastructure.Identity
             var role = roles.FirstOrDefault() ?? "Staff";
 
             var (token, expiresAt) = _tokenService.GenerateToken(user, role);
+            var refreshToken = await IssueRefreshTokenAsync(user.Id, ct);
 
-            return new AuthResult(token, expiresAt, user.TenantId, role);
+            return new AuthResult(token, expiresAt, user.TenantId, role, refreshToken);
         }
 
         public async Task RequestPasswordResetAsync(string email, CancellationToken ct)
@@ -129,5 +141,86 @@ namespace WhatsAppBot.Infrastructure.Identity
 
             return (true, null);
         }
+        public async Task<AuthResult?> RefreshAsync(string refreshToken, CancellationToken ct)
+        {
+            var hash = HashToken(refreshToken);
+            var stored = await _db.RefreshTokens.FirstOrDefaultAsync(t => t.TokenHash == hash, ct);
+
+            if (stored is null) return null; // nunca existió — token inválido, sin más
+
+            if (!stored.IsActive)
+            {
+                // Este hash existe pero ya no está activo. Si específicamente
+                // fue REVOCADO porque ya se usó antes (tiene ReplacedByTokenHash),
+                // alguien está reintentando un refresh token viejo — señal de
+                // que pudo filtrarse. Respuesta: revocar TODOS los tokens
+                // activos de este usuario, forzando un re-login real en
+                // cualquier sesión (legítima o no).
+                if (stored.ReplacedByTokenHash is not null)
+                {
+                    var allActive = await _db.RefreshTokens
+                        .Where(t => t.UserId == stored.UserId && t.RevokedAtUtc == null)
+                        .ToListAsync(ct);
+
+                    foreach (var t in allActive) t.RevokedAtUtc = DateTime.UtcNow;
+                    await _db.SaveChangesAsync(ct);
+                }
+
+                return null;
+            }
+
+            var user = await _userManager.FindByIdAsync(stored.UserId.ToString());
+            if (user is null) return null;
+
+            if (await _userManager.IsLockedOutAsync(user)) return null;
+
+            var roles = await _userManager.GetRolesAsync(user);
+            var role = roles.FirstOrDefault() ?? "Staff";
+
+            var (jwt, expiresAt) = _tokenService.GenerateToken(user, role);
+
+            // Rotación: el token usado queda revocado y apunta al nuevo —
+            // así, si alguien lo reintenta después, lo detectamos arriba.
+            var newRefreshToken = await IssueRefreshTokenAsync(user.Id, ct);
+            stored.RevokedAtUtc = DateTime.UtcNow;
+            stored.ReplacedByTokenHash = HashToken(newRefreshToken);
+            await _db.SaveChangesAsync(ct);
+
+            return new AuthResult(jwt, expiresAt, user.TenantId, role, newRefreshToken);
+        }
+
+        public async Task RevokeRefreshTokenAsync(string refreshToken, CancellationToken ct)
+        {
+            var hash = HashToken(refreshToken);
+            var stored = await _db.RefreshTokens.FirstOrDefaultAsync(t => t.TokenHash == hash, ct);
+
+            if (stored is null || !stored.IsActive) return; // ya inválido, nada que hacer
+
+            stored.RevokedAtUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+        }
+
+        private async Task<string> IssueRefreshTokenAsync(Guid userId, CancellationToken ct)
+        {
+            // 256 bits de aleatoriedad criptográfica — no es un JWT, es solo
+            // un identificador opaco que el cliente guarda y devuelve tal cual.
+            var rawToken = WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
+
+            _db.RefreshTokens.Add(new RefreshToken
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                TokenHash = HashToken(rawToken),
+                CreatedAtUtc = DateTime.UtcNow,
+                ExpiresAtUtc = DateTime.UtcNow.Add(RefreshTokenLifetime)
+            });
+            await _db.SaveChangesAsync(ct);
+
+            return rawToken;
+        }
+
+        private static string HashToken(string rawToken)
+            => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawToken)));
+
     }
 }

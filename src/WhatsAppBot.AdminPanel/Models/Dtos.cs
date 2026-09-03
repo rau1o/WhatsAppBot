@@ -1,7 +1,7 @@
 namespace WhatsAppBot.AdminPanel.Models;
 
 public record LoginRequest(string Email, string Password);
-public record LoginResponse(string Token, DateTime ExpiresAtUtc, Guid TenantId, string Role);
+public record LoginResponse(string Token, DateTime ExpiresAtUtc, Guid TenantId, string Role, string RefreshToken);
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 public record ProductDto(Guid Id, string Name, string? Description, decimal Price, string? ImageUrl, bool IsActive);
 public record UpsertProductRequest(string Name, string? Description, decimal Price, string? ImageUrl, bool IsActive);

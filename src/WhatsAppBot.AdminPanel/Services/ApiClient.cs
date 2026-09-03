@@ -45,10 +45,30 @@ public class ApiClient
         var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
         if (result is null) return (false, "Respuesta inesperada del servidor.");
 
-        _authState.SetSession(result.Token, email, result.Role, result.TenantId, result.ExpiresAtUtc);
+        _authState.SetSession(result.Token, result.RefreshToken,email, result.Role, result.TenantId, result.ExpiresAtUtc);
         return (true, null);
     }
+    // Termina la sesión del lado del servidor (revoca el refresh token) —
+    // no alcanza con solo borrar el estado local, si no alguien que haya
+    // copiado el refresh token antes de este momento lo podría seguir usando.
+    public async Task LogoutAsync()
+    {
+        if (_authState.RefreshToken is not null)
+        {
+            try
+            {
+                await _http.PostAsJsonAsync("api/auth/logout", new { RefreshToken = _authState.RefreshToken });
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                // Best-effort: si el Api no responde, igual limpiamos la sesión
+                // local — no tiene sentido dejar a alguien "atrapado" logueado
+                // en su browser solo porque la revocación del servidor falló.
+            }
+        }
 
+        _authState.Clear();
+    }
     public async Task<(bool Success, string? Error)> ForgotPasswordAsync(string email)
     {
         HttpResponseMessage response;
@@ -305,4 +325,46 @@ public class ApiClient
             };
         }
     }
+    // Se llama antes de CADA request autenticado. Si el JWT está por vencer
+    // (o ya venció) y todavía tenemos un refresh token, lo renueva en
+    // silencio — el usuario activo nunca ve un "sesión vencida" mientras
+    // siga usando el panel. Si el refresh también falla (token robado
+    // detectado, o venció a los 30 días), limpiamos la sesión: el próximo
+    // request sale sin Authorization, el Api devuelve 401, y el flujo
+    // normal de "no autenticado" del panel se encarga de mandarlo al login.
+    private async Task EnsureFreshTokenAsync()
+    {
+        if (_authState.Token is null || _authState.RefreshToken is null) return;
+
+        var closeToExpiring = _authState.ExpiresAtUtc is null
+            || _authState.ExpiresAtUtc.Value <= DateTime.UtcNow.AddMinutes(5);
+
+        if (!closeToExpiring) return;
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.PostAsJsonAsync("api/auth/refresh", new { RefreshToken = _authState.RefreshToken });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return; // el request original va a fallar solo si hacía falta un token válido
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _authState.Clear();
+            return;
+        }
+
+        var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
+        if (result is null)
+        {
+            _authState.Clear();
+            return;
+        }
+
+        _authState.SetSession(result.Token, result.RefreshToken, _authState.Email!, result.Role, result.TenantId, result.ExpiresAtUtc);
+    }
+
 }

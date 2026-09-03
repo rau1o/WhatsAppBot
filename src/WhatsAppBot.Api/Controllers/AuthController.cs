@@ -28,7 +28,28 @@ namespace WhatsAppBot.Api.Controllers
             // "contraseña incorrecta" evita filtrar qué emails están registrados.
             if (result is null) return Unauthorized(new { message = "Credenciales inválidas" });
 
-            return Ok(new LoginResponse(result.Token, result.ExpiresAtUtc, result.TenantId, result.Role));
+            return Ok(new LoginResponse(result.Token, result.ExpiresAtUtc, result.TenantId, result.Role, result.RefreshToken));
+        }
+
+        // Sin [Authorize] a propósito — el JWT puede estar vencido, que es
+        // justo el caso normal en que se llama esto. La prueba de identidad
+        // acá es el refresh token en sí, no el header Authorization.
+        [HttpPost("refresh")]
+        [EnableRateLimiting("login")]
+        public async Task<IActionResult> Refresh([FromBody] RefreshRequest request, CancellationToken ct)
+        {
+            var result = await _auth.RefreshAsync(request.RefreshToken, ct);
+
+            if (result is null) return Unauthorized(new { message = "Sesión vencida. Volvé a iniciar sesión." });
+
+            return Ok(new LoginResponse(result.Token, result.ExpiresAtUtc, result.TenantId, result.Role, result.RefreshToken));
+        }
+
+        [HttpPost("logout")]
+        public async Task<IActionResult> Logout([FromBody] RefreshRequest request, CancellationToken ct)
+        {
+            await _auth.RevokeRefreshTokenAsync(request.RefreshToken, ct);
+            return NoContent();
         }
 
         // Cualquier usuario logueado puede cambiar SU PROPIA contraseña — no

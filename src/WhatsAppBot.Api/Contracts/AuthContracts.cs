@@ -4,8 +4,9 @@ namespace WhatsAppBot.Api.Contracts
 {
     public record LoginRequest(string Email, string Password);
 
-    public record LoginResponse(string Token, DateTime ExpiresAtUtc, Guid TenantId, string Role);
+    public record LoginResponse(string Token, DateTime ExpiresAtUtc, Guid TenantId, string Role, string RefreshToken);
 
+    public record RefreshRequest([Required] string RefreshToken);
     public record ChangePasswordRequest(
         [Required] string CurrentPassword,
         [Required, MinLength(8)] string NewPassword
