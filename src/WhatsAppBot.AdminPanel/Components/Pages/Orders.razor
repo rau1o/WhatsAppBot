@@ -63,7 +63,7 @@ else
                 @if (_activeTab == "pending")
                 {
                     <div class="order-card-actions">
-                        <button class="btn-link btn-link-muted" @onclick="() => UndoApproval(order)" disabled="@_processingId.HasValue">
+                        <button class="btn-link btn-link-subtle" @onclick="() => UndoApproval(order)" disabled="@_processingId.HasValue">
                             Deshacer aprobación
                         </button>
                         <button class="btn-link" @onclick="() => MarkReady(order)" disabled="@_processingId.HasValue">

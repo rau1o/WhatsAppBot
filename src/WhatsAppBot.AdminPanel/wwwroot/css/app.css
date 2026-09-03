@@ -302,6 +302,12 @@ textarea { resize: vertical; min-height: 2.5rem; }
 .btn-link-muted { color: var(--color-sidebar-text-dim); }
 .btn-link-muted:hover { color: #fff; }
 
+/* A diferencia de btn-link-muted (pensado para el sidebar oscuro, se pone
+   blanco en hover), este es para texto secundario sobre fondo CLARO — como
+   las tarjetas de pedidos. Blanco en hover ahí lo dejaría invisible. */
+.btn-link-subtle { color: var(--color-text-muted); }
+.btn-link-subtle:hover { color: var(--color-text); }
+
 /* ---------- Tabla ---------- */
 
 .data-table {
