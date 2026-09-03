@@ -48,5 +48,26 @@ namespace WhatsAppBot.Api.Controllers
 
             return NoContent();
         }
+        // Siempre devuelve el mismo mensaje genérico, exista o no el email —
+        // evita que alguien use este endpoint para averiguar qué emails
+        // están registrados en el sistema.
+        [HttpPost("forgot-password")]
+        [EnableRateLimiting("login")]
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request, CancellationToken ct)
+        {
+            await _auth.RequestPasswordResetAsync(request.Email, ct);
+            return Ok(new { message = "Si el email existe en el sistema, te llegó un correo con el link para restablecer tu contraseña." });
+        }
+
+        [HttpPost("reset-password")]
+        [EnableRateLimiting("login")]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request, CancellationToken ct)
+        {
+            var (success, error) = await _auth.ResetPasswordAsync(request.Email, request.Token, request.NewPassword, ct);
+
+            if (!success) return BadRequest(new { message = error });
+
+            return NoContent();
+        }
     }
 }
