@@ -18,5 +18,11 @@ namespace WhatsAppBot.Application.Abstractions
         // de otro", eso ya existe en IUserManagementService. Esto es "el usuario
         // logueado cambia la suya propia", siempre validando la actual primero.
         Task<(bool Success, string? Error)> ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken ct);
+
+        // Siempre "exitoso" desde afuera (nunca revela si el email existe o
+        // no) — si el usuario existe, dispara el email con el link de reseteo.
+        Task RequestPasswordResetAsync(string email, CancellationToken ct);
+
+        Task<(bool Success, string? Error)> ResetPasswordAsync(string email, string token, string newPassword, CancellationToken ct);
     }
 }

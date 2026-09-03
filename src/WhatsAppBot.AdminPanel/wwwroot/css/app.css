@@ -439,6 +439,14 @@ textarea { resize: vertical; min-height: 2.5rem; }
   margin: 0.25rem 0 1.5rem;
 }
 
+.auth-secondary-link {
+  text-align: center;
+  font-size: 0.85rem;
+  margin-top: 1.25rem;
+}
+.auth-secondary-link a { color: var(--color-text-muted); }
+.auth-secondary-link a:hover { color: var(--color-text); }
+
 /* ---------- Responsive ---------- */
 
 @media (prefers-reduced-motion: reduce) {

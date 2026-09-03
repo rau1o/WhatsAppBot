@@ -107,7 +107,14 @@ public static class DependencyInjection
             options.User.RequireUniqueEmail = true;
         })
             .AddRoles<IdentityRole<Guid>>()
-            .AddEntityFrameworkStores<WhatsAppBotDbContext>();
+            .AddEntityFrameworkStores<WhatsAppBotDbContext>()
+            // Necesario para GeneratePasswordResetTokenAsync/ResetPasswordAsync
+            // — sin esto tiran "No IUserTwoFactorTokenProvider named 'Default'
+            // is registered". El token generado está atado al SecurityStamp
+            // del usuario (cambia si se resetea la contraseña) y expira solo
+            // (default: 1 día) — no hace falta que nosotros lo invalidemos a mano.
+            .AddDefaultTokenProviders();
+
 
         // El default de Identity son 100.000 iteraciones de PBKDF2-HMAC-SHA256
         // — quedó corto frente a la recomendación actual de OWASP (600.000,
@@ -121,9 +128,19 @@ public static class DependencyInjection
 
         services.Configure<JwtOptions>(config.GetSection(JwtOptions.SectionName));
         services.Configure<ConversationTimeoutOptions>(config.GetSection(ConversationTimeoutOptions.SectionName));
+        services.Configure<AdminPanelOptions>(config.GetSection(AdminPanelOptions.SectionName));
         services.AddSingleton<JwtTokenService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserManagementService, UserManagementService>(); ;
+
+        // Brevo: 300 emails/día gratis para siempre — de sobra para resets
+        // de contraseña de un negocio chico. Ver BrevoEmailSender.
+        services.Configure<Email.BrevoOptions>(config.GetSection(Email.BrevoOptions.SectionName));
+        services.AddHttpClient("Brevo", client =>
+        {
+            client.BaseAddress = new Uri("https://api.brevo.com/v3/");
+        });
+        services.AddScoped<IEmailSender, Email.BrevoEmailSender>();
 
         var jwtOptions = config.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
             ?? throw new InvalidOperationException("Falta la sección 'Jwt' en appsettings.json");

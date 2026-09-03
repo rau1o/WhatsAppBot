@@ -49,6 +49,55 @@ public class ApiClient
         return (true, null);
     }
 
+    public async Task<(bool Success, string? Error)> ForgotPasswordAsync(string email)
+    {
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.PostAsJsonAsync("api/auth/forgot-password", new { Email = email });
+        }
+        catch (HttpRequestException ex)
+        {
+            return (false, $"No pudimos conectar con el servidor ({ex.Message}).");
+        }
+        catch (TaskCanceledException)
+        {
+            return (false, "El servidor tardó demasiado en responder. Probá de nuevo.");
+        }
+
+        if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            return (false, "Demasiados intentos. Esperá un minuto y probá de nuevo.");
+
+        // El endpoint siempre devuelve éxito (aunque el email no exista) —
+        // ver el comentario en AuthController sobre por qué es a propósito.
+        return (true, null);
+    }
+
+    public async Task<(bool Success, string? Error)> ResetPasswordAsync(string email, string token, string newPassword)
+    {
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.PostAsJsonAsync("api/auth/reset-password", new { Email = email, Token = token, NewPassword = newPassword });
+        }
+        catch (HttpRequestException ex)
+        {
+            return (false, $"No pudimos conectar con el servidor ({ex.Message}).");
+        }
+        catch (TaskCanceledException)
+        {
+            return (false, "El servidor tardó demasiado en responder. Probá de nuevo.");
+        }
+
+        if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            return (false, "Demasiados intentos. Esperá un minuto y probá de nuevo.");
+
+        if (response.IsSuccessStatusCode) return (true, null);
+
+        var error = await TryReadErrorMessage(response);
+        return (false, error ?? "No pudimos restablecer tu contraseña.");
+    }
+
     public async Task<List<ProductDto>> GetProductsAsync()
     {
         var response = await SendAsync(HttpMethod.Get, "api/products");
@@ -189,6 +238,7 @@ public class ApiClient
         if (response.IsSuccessStatusCode) return (true, null);
         return (false, await TryReadErrorMessage(response) ?? "No pudimos rechazar el comprobante.");
     }
+
     public async Task<List<FulfillmentOrderDto>> GetOrdersByStatusAsync(string status)
     {
         var response = await SendAsync(HttpMethod.Get, $"api/orders?status={status}");
