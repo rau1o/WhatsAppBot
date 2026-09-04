@@ -54,6 +54,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 
 builder.Services.AddAuthorizationCore();
 builder.Services.AddScoped<AuthState>();
+builder.Services.AddScoped<SessionPersistence>();
 builder.Services.AddScoped<AuthenticationStateProvider, ApiAuthStateProvider>();
 
 var apiBaseUrl = builder.Configuration["Api:BaseUrl"]

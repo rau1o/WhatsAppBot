@@ -1,5 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
 using WhatsAppBot.AdminPanel.Middleware;
 using WhatsAppBot.AdminPanel.Models;
 
@@ -50,6 +52,57 @@ public class ApiClient
 
         _authState.SetSession(result.Token, result.RefreshToken, email, result.Role, result.TenantId, result.ExpiresAtUtc);
         return (true, null);
+    }
+
+    // Reconstruye la sesión a partir de un refresh token guardado en el
+    // browser (ver SessionPersistence) — se usa al recargar la página, ya
+    // que el circuito de Blazor Server (y con él, AuthState) arranca de
+    // cero en cada F5. No hace falta que el caller sepa el email de
+    // antemano — lo sacamos del JWT que devuelve el refresh.
+    public async Task<bool> RestoreSessionAsync(string refreshToken)
+    {
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.PostAsJsonAsync("api/auth/refresh", new { RefreshToken = refreshToken });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            _logger.LogWarning(ex, "No se pudo restaurar la sesión desde el refresh token guardado.");
+            return false;
+        }
+
+        if (!response.IsSuccessStatusCode) return false;
+
+        var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
+        if (result is null) return false;
+
+        var email = TryExtractEmailClaim(result.Token);
+        if (email is null) return false;
+
+        _authState.SetSession(result.Token, result.RefreshToken, email, result.Role, result.TenantId, result.ExpiresAtUtc);
+        return true;
+    }
+
+    // No valida la firma — no hace falta: el token recién nos lo devolvió
+    // el propio Api en la respuesta HTTP de este mismo request, así que ya
+    // confiamos en él. Esto es solo para leer el claim "email" del payload
+    // sin depender de un endpoint aparte.
+    private static string? TryExtractEmailClaim(string jwt)
+    {
+        try
+        {
+            var payloadSegment = jwt.Split('.')[1];
+            var padded = payloadSegment.PadRight(payloadSegment.Length + (4 - payloadSegment.Length % 4) % 4, '=');
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(padded.Replace('-', '+').Replace('_', '/')));
+
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.TryGetProperty("email", out var emailProp) ? emailProp.GetString() : null;
+        }
+        catch (Exception ex) when (ex is FormatException or JsonException or IndexOutOfRangeException)
+        {
+            return null;
+        }
     }
 
     // Termina la sesión del lado del servidor (revoca el refresh token) —

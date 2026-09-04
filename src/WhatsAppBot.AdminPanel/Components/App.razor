@@ -14,7 +14,15 @@
     <HeadOutlet />
 </head>
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <!-- prerender: false a propósito — con el prerender activado, Blazor
+         renderiza la página primero SIN interop de JS (para SEO/velocidad
+         percibida), y en ese primer render [Authorize] ve un AuthState
+         vacío (todavía no hay forma de leer el refresh token guardado en
+         el browser) y puede redirigir al login antes de que la
+         restauración de sesión (ver Routes.razor) tenga chance de correr.
+         Sin prerender, el circuito arranca directo interactivo, un único
+         render, sin esa carrera. -->
+    <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
     <script src="_framework/blazor.web.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
