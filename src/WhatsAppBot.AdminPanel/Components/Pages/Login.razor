@@ -2,8 +2,17 @@
 @layout AuthLayout
 @inject ApiClient Api
 @inject AuthState AuthState
+@inject SessionPersistence SessionPersistence
 @inject NavigationManager Nav
 
+@if (_restoring)
+{
+    <div class="auth-card">
+        <p class="muted">Verificando sesión...</p>
+    </div>
+}
+else
+{
 <div class="auth-card">
     <div class="auth-brand">
         <span class="brand-mark">◆</span>
@@ -44,8 +53,13 @@
         <a href="/forgot-password">¿Olvidaste tu contraseña?</a>
     </p>
 </div>
+}
 
 @code {
+    // No usamos [SupplyParameterFromQuery] para ReturnUrl porque el
+    // decoy Cookie scheme lo arma como una URL codificada (ej.
+    // "%2Fproducts") — la leemos directo del query string de NavigationManager.
+    private bool _restoring = true;
     private string _email = "";
     private string _password = "";
     private string? _error;
@@ -53,6 +67,36 @@
     private bool _showPassword;
 
     private void TogglePasswordVisibility() => _showPassword = !_showPassword;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        var savedRefreshToken = await SessionPersistence.LoadRefreshTokenAsync();
+        if (!string.IsNullOrWhiteSpace(savedRefreshToken))
+        {
+            var restored = await Api.RestoreSessionAsync(savedRefreshToken);
+            if (restored)
+            {
+                Nav.NavigateTo(GetReturnUrl(), forceLoad: false);
+                return; // seguimos navegando afuera — no hace falta sacar _restoring
+            }
+        }
+
+        _restoring = false;
+        StateHasChanged();
+    }
+
+    private string GetReturnUrl()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        if (string.IsNullOrEmpty(uri.Query)) return "/products";
+
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+        return query.TryGetValue("ReturnUrl", out var returnUrl) && !string.IsNullOrWhiteSpace(returnUrl)
+            ? returnUrl.ToString()
+            : "/products";
+    }
 
     private async Task HandleLogin()
     {
@@ -70,6 +114,6 @@
             return;
         }
 
-        Nav.NavigateTo("/products", forceLoad: false);
+        Nav.NavigateTo(GetReturnUrl(), forceLoad: false);
     }
 }

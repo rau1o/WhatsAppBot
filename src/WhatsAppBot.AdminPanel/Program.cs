@@ -45,30 +45,16 @@ builder.Services.AddDataProtection()
 // llamamos SignInAsync) — existe solo para que ASP.NET Core sepa a dónde
 // mandar la PRIMERA carga HTTP completa de una página [Authorize] cuando
 // todavía no hay circuito de Blazor ni AuthState. El login real es el JWT
-// que maneja AuthState/ApiAuthStateProvider, scoped al circuito.
+// que maneja AuthState/ApiAuthStateProvider, scoped al circuito. La
+// restauración de sesión (ver Login.razor) corre DESPUÉS de este redirect,
+// no intenta evitarlo — Login.razor detecta si hay una sesión restaurable
+// y, si la hay, navega solo a donde corresponda sin mostrar el formulario.
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
         options.LoginPath = "/login";
-        // Sin esto, este esquema decoy intercepta la PRIMERA carga HTTP
-        // completa de cualquier página [Authorize] (ej. un F5 real) y la
-        // redirige a /login con un 302 real — ANTES de que el circuito de
-        // Blazor arranque, y con él, la restauración de sesión desde
-        // sessionStorage (ver Routes.razor). Devolver 200 acá deja que el
-        // circuito arranque normal; la autorización real la resuelve
-        // AuthorizeRouteView del lado del cliente, ya con AuthState
-        // habiendo intentado restaurar la sesión primero.
-        options.Events.OnRedirectToLogin = context =>
-        {
-            context.Response.StatusCode = StatusCodes.Status200OK;
-            return Task.CompletedTask;
-        };
-        options.Events.OnRedirectToAccessDenied = context =>
-        {
-            context.Response.StatusCode = StatusCodes.Status200OK;
-            return Task.CompletedTask;
-        };
     });
+
 
 builder.Services.AddAuthorizationCore();
 builder.Services.AddScoped<AuthState>();

@@ -1,64 +1,33 @@
 @implements IDisposable
 @inject AuthState AuthState
-@inject ApiClient Api
 @inject SessionPersistence SessionPersistence
 
-@if (_restoring)
-{
-    <div class="session-restoring">
-        <p class="muted">Cargando...</p>
-    </div>
-}
-else
-{
-    <CascadingAuthenticationState>
-        <Router AppAssembly="@typeof(Program).Assembly">
-            <Found Context="routeData">
-                <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
-                    <NotAuthorized>
-                        <RedirectToLogin />
-                    </NotAuthorized>
-                </AuthorizeRouteView>
-            </Found>
-            <NotFound>
-                <LayoutView Layout="@typeof(MainLayout)">
-                    <p class="muted">Esa página no existe.</p>
-                </LayoutView>
-            </NotFound>
-        </Router>
-    </CascadingAuthenticationState>
-}
+<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(Program).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                <NotAuthorized>
+                    <RedirectToLogin />
+                </NotAuthorized>
+            </AuthorizeRouteView>
+        </Found>
+        <NotFound>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <p class="muted">Esa página no existe.</p>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>
 
 @code {
-    // Arranca en true — bloquea el Router hasta que la restauración de
-    // sesión (o la confirmación de que no hay nada que restaurar) termine.
-    // Sin esto, AuthorizeRouteView podría evaluar [Authorize] contra un
-    // AuthState todavía vacío y mandar a alguien con sesión válida al
-    // login, solo porque el refresh token guardado en el browser no tuvo
-    // tiempo de leerse todavía.
-    private bool _restoring = true;
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    // El intento de RESTAURAR la sesión vive en Login.razor (que es a
+    // donde el framework ya manda a cualquiera sin sesión) — acá solo
+    // sincronizamos el storage cada vez que la sesión cambia (login,
+    // logout, o el refresh token rotando en cada uso), sin importar
+    // desde dónde haya cambiado.
+    protected override void OnInitialized()
     {
-        if (!firstRender) return;
-
-        // Cada vez que la sesión cambia (login, logout, o el refresh token
-        // rota en cada uso) sincronizamos lo que hay guardado en el
-        // browser — así el próximo F5 siempre parte del token más nuevo,
-        // nunca de uno viejo ya invalidado por la rotación.
         AuthState.OnChange += PersistCurrentSession;
-
-        if (!AuthState.IsAuthenticated)
-        {
-            var savedRefreshToken = await SessionPersistence.LoadRefreshTokenAsync();
-            if (!string.IsNullOrWhiteSpace(savedRefreshToken))
-            {
-                await Api.RestoreSessionAsync(savedRefreshToken);
-            }
-        }
-
-        _restoring = false;
-        StateHasChanged();
     }
 
     private async void PersistCurrentSession()
@@ -72,9 +41,9 @@ else
         }
         catch (Exception)
         {
-            // Un event handler síncrono no puede propagar una excepción de
-            // forma útil acá — a lo sumo, el próximo F5 no encuentra sesión
-            // guardada y pide loguearse de nuevo, que es una falla segura.
+            // Un event handler síncrono no puede propagar esto de forma
+            // útil — a lo sumo, el próximo F5 no encuentra sesión guardada
+            // y pide loguearse de nuevo, que es una falla segura.
         }
     }
 
