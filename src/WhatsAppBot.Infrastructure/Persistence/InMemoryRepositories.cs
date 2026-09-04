@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.Collections.Concurrent;
 using WhatsAppBot.Application.Abstractions;
 using WhatsAppBot.Domain.Entities;
@@ -30,12 +31,14 @@ public class InMemoryProductRepository : IProductRepository
     public Task<Product?> GetByIdAsync(Guid id, CancellationToken ct)
         => Task.FromResult(_products.GetValueOrDefault(id));
 
-    public Task<IReadOnlyList<Product>> ListAllAsync(CancellationToken ct)
+    public Task<PagedResult<Product>> ListAllAsync(int page, int pageSize, CancellationToken ct)
     {
         var tenantId = RequireTenantId();
-        IReadOnlyList<Product> result = _products.Values.Where(p => p.TenantId == tenantId).ToList();
-        return Task.FromResult(result);
+        var all = _products.Values.Where(p => p.TenantId == tenantId).OrderBy(p => p.Name).ToList();
+        var items = all.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        return Task.FromResult(new PagedResult<Product>(items, page, pageSize, all.Count));
     }
+
 
     public Task AddAsync(Product product, CancellationToken ct)
     {
@@ -220,15 +223,18 @@ public class InMemoryConversationRepository : IConversationRepository
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<Conversation>> ListRecentAsync(CancellationToken ct)
+    public Task<PagedResult<Conversation>> ListRecentAsync(int page, int pageSize, CancellationToken ct)
     {
         var tenantId = RequireTenantId();
-        IReadOnlyList<Conversation> result = _conversations.Values
-            .Where(c => c.TenantId == tenantId)
-            .OrderByDescending(c => c.LastMessageAt)
-            .ToList();
+        var all = _conversations.Values
+           .Where(c => c.TenantId == tenantId)
+           .OrderByDescending(c => c.LastMessageAt)
+           .ToList();
 
-        return Task.FromResult(result);
+
+        var items = all.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        return Task.FromResult(new PagedResult<Conversation>(items, page, pageSize, all.Count));
+
     }
 
     private Guid RequireTenantId()

@@ -50,14 +50,27 @@ else
             }
         </tbody>
     </table>
+
+    <Pager Page="_currentPage" TotalPages="_totalPages" TotalCount="_totalCount" OnPageChanged="GoToPage" />
 }
 
 @code {
+    private const int PageSize = 20;
+
     private List<ConversationSummaryDto> _conversations = [];
+    private int _currentPage = 1;
+    private int _totalPages = 1;
+    private int _totalCount;
     private bool _loading = true;
     private string? _error;
 
     protected override async Task OnInitializedAsync() => await LoadConversations();
+
+    private async Task GoToPage(int page)
+    {
+        _currentPage = page;
+        await LoadConversations();
+    }
 
     private async Task LoadConversations()
     {
@@ -65,9 +78,10 @@ else
         _error = null;
         try
         {
-            _conversations = (await Api.GetConversationsAsync())
-                .OrderByDescending(c => c.LastMessageAt)
-                .ToList();
+            var result = await Api.GetConversationsAsync(_currentPage, PageSize);
+            _conversations = result.Items;
+            _totalPages = result.TotalPages;
+            _totalCount = result.TotalCount;
         }
         catch (Exception)
         {
@@ -83,6 +97,7 @@ else
         "New" => "Nuevo",
         "Greeted" => "Saludado",
         "BrowsingCatalog" => "Viendo catálogo",
+        "AwaitingQuantity" => "Eligiendo cantidad",
         "BuildingOrder" => "Armando pedido",
         "AwaitingPayment" => "Esperando pago",
         "PaymentInReview" => "Pago en revisión",
@@ -94,7 +109,7 @@ else
     {
         "Confirmed" => "pill-active",
         "AwaitingPayment" or "PaymentInReview" => "pill-warning",
-        "BrowsingCatalog" or "BuildingOrder" => "pill-info",
+        "BrowsingCatalog" or "AwaitingQuantity" or "BuildingOrder" => "pill-info",
         _ => "pill-inactive"
     };
 }

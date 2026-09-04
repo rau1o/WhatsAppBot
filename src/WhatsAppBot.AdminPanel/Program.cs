@@ -4,7 +4,9 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using System.Threading.RateLimiting;
 using WhatsAppBot.AdminPanel.Components;
+using WhatsAppBot.AdminPanel.Middleware;
 using WhatsAppBot.AdminPanel.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -69,6 +71,26 @@ builder.Services.AddHttpClient("Nominatim", client =>
     client.DefaultRequestHeaders.UserAgent.ParseAdd("WhatsAppBotAdminPanel/1.0 (contacto@tutienda.com)");
 });
 builder.Services.AddScoped<GeocodingService>();
+// Mismo criterio que en el Api: protección básica contra abuso, sin
+// depender de que cada página nueva se acuerde de pedirlo.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 200,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+});
+
+// Sin auth a propósito, mismo criterio que el del Api — pensado para que lo
+// pegue un monitor externo o el propio Railway, no para consumo humano.
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<DataProtectionKeysDbContext>("database");
 
 var app = builder.Build();
 
@@ -91,6 +113,12 @@ using (var scope = app.Services.CreateScope())
         """);
 }
 
+app.UseForwardedHeaders();
+
+// Lo más temprano posible — mismo criterio que en el Api, así todo log
+// posterior (incluido cualquier error) ya tiene el CorrelationId disponible.
+app.UseMiddleware<CorrelationIdMiddleware>();
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
@@ -100,6 +128,9 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseAntiforgery();
+app.UseRateLimiter();
+
+app.MapHealthChecks("/health");
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

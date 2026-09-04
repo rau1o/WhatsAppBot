@@ -1,0 +1,18 @@
+<div class="pager">
+    <button class="btn-link" disabled="@(Page <= 1)" @onclick="() => OnPageChanged.InvokeAsync(Page - 1)">
+        ← Anterior
+    </button>
+    <span class="pager-status">
+        Página @Page de @(Math.Max(TotalPages, 1)) — @TotalCount total@(TotalCount == 1 ? "" : "es")
+    </span>
+    <button class="btn-link" disabled="@(Page >= TotalPages)" @onclick="() => OnPageChanged.InvokeAsync(Page + 1)">
+        Siguiente →
+    </button>
+</div>
+
+@code {
+    [Parameter] public int Page { get; set; }
+    [Parameter] public int TotalPages { get; set; }
+    [Parameter] public int TotalCount { get; set; }
+    [Parameter] public EventCallback<int> OnPageChanged { get; set; }
+}

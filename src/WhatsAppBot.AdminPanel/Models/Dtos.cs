@@ -17,7 +17,7 @@ public record TenantSettingsDto(Guid Id, string Name, string WhatsAppPhoneNumber
 public record UpdateTenantSettingsRequest(string Name, double LocationLatitude, double LocationLongitude, string LocationName, string LocationAddress);
 
 public record PaymentProofDto(Guid Id, Guid OrderId, string CustomerPhoneNumber, decimal OrderTotal, string Status, DateTime CreatedAt);
-
+public record PagedResponse<T>(List<T> Items, int Page, int PageSize, int TotalCount, int TotalPages);
 public record OrderItemLineDto(string ProductName, int Quantity, decimal UnitPrice);
 public record FulfillmentOrderDto(Guid Id, string CustomerPhoneNumber, decimal Total, string FulfillmentStatus, DateTime CreatedAt, List<OrderItemLineDto> Items);
 

@@ -99,7 +99,7 @@ namespace WhatsAppBot.Infrastructure.Persistence.Repositories
 
         }
 
-        public async Task<IReadOnlyList<Conversation>> ListRecentAsync(CancellationToken ct)
+        public async Task<PagedResult<Conversation>> ListRecentAsync(int page, int pageSize, CancellationToken ct)
         {
             // Sin esto, si no hay tenant seteado el global query filter devuelve
             // una lista vacía silenciosa (porque compara contra null) — preferimos
@@ -107,10 +107,15 @@ namespace WhatsAppBot.Infrastructure.Persistence.Repositories
             // disfrace de "este tenant no tiene conversaciones".
             RequireTenantId();
 
-            return await _db.Conversations
-                .OrderByDescending(c => c.LastMessageAt)
-                .Take(100)
+            var query = _db.Conversations.OrderByDescending(c => c.LastMessageAt);
+
+            var totalCount = await query.CountAsync(ct);
+            var items = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync(ct);
+
+            return new PagedResult<Conversation>(items, page, pageSize, totalCount);
         }
 
         private Guid RequireTenantId()

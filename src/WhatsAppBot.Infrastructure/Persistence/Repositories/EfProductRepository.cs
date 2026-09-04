@@ -28,14 +28,21 @@ public class EfProductRepository : IProductRepository
     public async Task<Product?> GetByIdAsync(Guid id, CancellationToken ct)
         => await _db.Products.FirstOrDefaultAsync(p => p.Id == id, ct);
 
-    public async Task<IReadOnlyList<Product>> ListAllAsync(CancellationToken ct)
+    public async Task<PagedResult<Product>> ListAllAsync(int page, int pageSize, CancellationToken ct)
     {
         RequireTenantId();
 
-        return await _db.Products
-            .OrderBy(p => p.Name)
+        var query = _db.Products.OrderBy(p => p.Name);
+
+        var totalCount = await query.CountAsync(ct);
+        var items = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(ct);
+
+        return new PagedResult<Product>(items, page, pageSize, totalCount);
     }
+       
 
     public async Task AddAsync(Product product, CancellationToken ct)
     {

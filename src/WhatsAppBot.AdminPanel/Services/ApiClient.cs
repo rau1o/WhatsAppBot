@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using WhatsAppBot.AdminPanel.Middleware;
 using WhatsAppBot.AdminPanel.Models;
 
 namespace WhatsAppBot.AdminPanel.Services;
@@ -8,11 +9,13 @@ public class ApiClient
 {
     private readonly HttpClient _http;
     private readonly AuthState _authState;
+    private readonly ILogger<ApiClient> _logger;
 
-    public ApiClient(HttpClient http, AuthState authState)
+    public ApiClient(HttpClient http, AuthState authState, ILogger<ApiClient> logger)
     {
         _http = http;
         _authState = authState;
+        _logger = logger;
     }
 
     public async Task<(bool Success, string? Error)> LoginAsync(string email, string password)
@@ -45,9 +48,10 @@ public class ApiClient
         var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
         if (result is null) return (false, "Respuesta inesperada del servidor.");
 
-        _authState.SetSession(result.Token, result.RefreshToken,email, result.Role, result.TenantId, result.ExpiresAtUtc);
+        _authState.SetSession(result.Token, result.RefreshToken, email, result.Role, result.TenantId, result.ExpiresAtUtc);
         return (true, null);
     }
+
     // Termina la sesión del lado del servidor (revoca el refresh token) —
     // no alcanza con solo borrar el estado local, si no alguien que haya
     // copiado el refresh token antes de este momento lo podría seguir usando.
@@ -69,6 +73,7 @@ public class ApiClient
 
         _authState.Clear();
     }
+
     public async Task<(bool Success, string? Error)> ForgotPasswordAsync(string email)
     {
         HttpResponseMessage response;
@@ -118,11 +123,12 @@ public class ApiClient
         return (false, error ?? "No pudimos restablecer tu contraseña.");
     }
 
-    public async Task<List<ProductDto>> GetProductsAsync()
+    public async Task<PagedResponse<ProductDto>> GetProductsAsync(int page = 1, int pageSize = 20)
     {
-        var response = await SendAsync(HttpMethod.Get, "api/products");
+        var response = await SendAsync(HttpMethod.Get, $"api/products?page={page}&pageSize={pageSize}");
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<List<ProductDto>>() ?? [];
+        return await response.Content.ReadFromJsonAsync<PagedResponse<ProductDto>>()
+            ?? new PagedResponse<ProductDto>([], page, pageSize, 0, 0);
     }
 
     public async Task<ProductDto?> CreateProductAsync(UpsertProductRequest request)
@@ -143,11 +149,12 @@ public class ApiClient
         return response.IsSuccessStatusCode;
     }
 
-    public async Task<List<ConversationSummaryDto>> GetConversationsAsync()
+    public async Task<PagedResponse<ConversationSummaryDto>> GetConversationsAsync(int page = 1, int pageSize = 20)
     {
-        var response = await SendAsync(HttpMethod.Get, "api/conversations");
+        var response = await SendAsync(HttpMethod.Get, $"api/conversations?page={page}&pageSize={pageSize}");
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<List<ConversationSummaryDto>>() ?? [];
+        return await response.Content.ReadFromJsonAsync<PagedResponse<ConversationSummaryDto>>()
+            ?? new PagedResponse<ConversationSummaryDto>([], page, pageSize, 0, 0);
     }
 
     public async Task<List<UserDto>> GetUsersAsync()
@@ -215,6 +222,9 @@ public class ApiClient
         if (_authState.Token is not null)
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _authState.Token);
 
+        var correlationId = Guid.NewGuid().ToString();
+        request.Headers.Add(CorrelationIdMiddleware.HeaderName, correlationId);
+
         HttpResponseMessage response;
         try
         {
@@ -222,6 +232,7 @@ public class ApiClient
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
+            _logger.LogError(ex, "Error subiendo archivo a api/tenant-settings/{Slot}. CorrelationId: {CorrelationId}", slot, correlationId);
             return (null, $"No pudimos conectar con el servidor ({ex.Message}).");
         }
 
@@ -301,6 +312,7 @@ public class ApiClient
             return null;
         }
     }
+
     public async Task<SalesReportDto?> GetSalesReportAsync(DateOnly? from, DateOnly? to)
     {
         var query = new List<string>();
@@ -313,6 +325,7 @@ public class ApiClient
 
         return await response.Content.ReadFromJsonAsync<SalesReportDto>();
     }
+
     // Devuelve los bytes crudos del .xlsx — Reports.razor los pasa a JS para
     // disparar la descarga en el browser (ver wwwroot/js/fileDownload.js).
     // No se puede usar un <a href> directo porque el endpoint necesita el
@@ -337,15 +350,35 @@ public class ApiClient
         if (_authState.Token is not null)
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _authState.Token);
 
+        // Un ID nuevo por cada llamada — permite rastrear en los logs del
+        // Api exactamente qué acción del panel generó qué línea de log del
+        // otro lado. No alcanza con el middleware HTTP normal acá porque la
+        // mayoría de la interacción del panel pasa por SignalR, no por
+        // requests HTTP individuales — cada click puede terminar en varias
+        // llamadas al Api sin que haya un único "request" que las agrupe.
+        var correlationId = Guid.NewGuid().ToString();
+        request.Headers.Add(CorrelationIdMiddleware.HeaderName, correlationId);
+
         if (body is not null)
             request.Content = JsonContent.Create(body);
 
         try
         {
-            return await _http.SendAsync(request);
+            var response = await _http.SendAsync(request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Llamada a {Url} devolvió {StatusCode}. CorrelationId: {CorrelationId}",
+                    url, (int)response.StatusCode, correlationId);
+            }
+
+            return response;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
+            _logger.LogError(ex, "Error llamando a {Url}. CorrelationId: {CorrelationId}", url, correlationId);
+
             // Mismo motivo que en LoginAsync: una falla de red acá no debe
             // tumbar el circuito de Blazor. Devolvemos una respuesta sintética
             // no exitosa — los callers ya chequean IsSuccessStatusCode.
@@ -355,6 +388,7 @@ public class ApiClient
             };
         }
     }
+
     // Se llama antes de CADA request autenticado. Si el JWT está por vencer
     // (o ya venció) y todavía tenemos un refresh token, lo renueva en
     // silencio — el usuario activo nunca ve un "sesión vencida" mientras

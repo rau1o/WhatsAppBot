@@ -23,7 +23,7 @@ public interface IConversationRepository
 
     // Para el panel admin: lista las conversaciones del tenant actual,
     // más recientes primero.
-    Task<IReadOnlyList<Conversation>> ListRecentAsync(CancellationToken ct);
+    Task<PagedResult<Conversation>> ListRecentAsync(int page, int pageSize, CancellationToken ct);
 }
 public interface IOrderRepository
 {

@@ -19,10 +19,16 @@ public class ProductsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> List(CancellationToken ct)
+    public async Task<IActionResult> List([FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken ct = default)
     {
-        var products = await _products.ListAllAsync(ct);
-        return Ok(products.Select(ToDto));
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100); // tope duro — evita que alguien pida pageSize=999999 por error
+
+        var result = await _products.ListAllAsync(page, pageSize, ct);
+
+        return Ok(new PagedResponse<ProductDto>(
+            result.Items.Select(ToDto).ToList(), result.Page, result.PageSize, result.TotalCount, result.TotalPages));
+
     }
 
     [HttpGet("{id:guid}")]

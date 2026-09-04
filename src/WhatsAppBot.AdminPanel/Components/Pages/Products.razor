@@ -103,10 +103,17 @@ else if (_products.Count > 0)
             }
         </tbody>
     </table>
+
+    <Pager Page="_currentPage" TotalPages="_totalPages" TotalCount="_totalCount" OnPageChanged="GoToPage" />
 }
 
 @code {
+    private const int PageSize = 20;
+
     private List<ProductDto> _products = [];
+    private int _currentPage = 1;
+    private int _totalPages = 1;
+    private int _totalCount;
     private bool _loading = true;
     private bool _saving;
     private string? _error;
@@ -116,13 +123,22 @@ else if (_products.Count > 0)
 
     protected override async Task OnInitializedAsync() => await LoadProducts();
 
+    private async Task GoToPage(int page)
+    {
+        _currentPage = page;
+        await LoadProducts();
+    }
+
     private async Task LoadProducts()
     {
         _loading = true;
         _error = null;
         try
         {
-            _products = await Api.GetProductsAsync();
+            var result = await Api.GetProductsAsync(_currentPage, PageSize);
+            _products = result.Items;
+            _totalPages = result.TotalPages;
+            _totalCount = result.TotalCount;
         }
         catch (Exception)
         {
@@ -201,6 +217,11 @@ else if (_products.Count > 0)
         if (!confirmed) return;
 
         await Api.DeleteProductAsync(product.Id);
+
+        // Si era el último producto de esta página (y no es la primera),
+        // volvemos una página para no quedar mirando una lista vacía.
+        if (_products.Count == 1 && _currentPage > 1) _currentPage--;
+
         await LoadProducts();
     }
 
