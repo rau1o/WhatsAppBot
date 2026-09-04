@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>WhatsAppBot.Infrastructure.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <!-- Separado a propósito de WhatsAppBot.Application.Tests: estos tests
+       levantan un Postgres real en Docker (vía Testcontainers) y corren
+       mucho más lento — segundos, no milisegundos. Están pensados
+       puntualmente para los bugs que el repo EN MEMORIA nunca pudo
+       reproducir (comportamiento real de EF Core + Postgres), no para
+       repetir la cobertura que ya tienen los StateHandlers. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="FluentAssertions" Version="6.12.1" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="3.10.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WhatsAppBot.Infrastructure\WhatsAppBot.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
