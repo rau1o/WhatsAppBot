@@ -100,10 +100,11 @@ namespace WhatsAppBot.Infrastructure.Identity
 
             var html = $"""
                 <p>Hola,</p>
-                <p>Recibimos un pedido para restablecer tu contraseña del panel de WhatsApp Bot.</p>
+                <p>Recibimos un pedido para restablecer tu contraseña del panel de administración de Hextech Software.</p>
                 <p><a href="{resetLink}">Hacé click acá para elegir una contraseña nueva</a></p>
                 <p>Si vos no pediste esto, podés ignorar este correo — tu contraseña actual sigue funcionando igual.</p>
                 <p>Este link vence en 24 horas.</p>
+                <p>— Hextech Software</p>
                 """;
 
             await _emailSender.SendAsync(email, "Restablecer tu contraseña", html, ct);
