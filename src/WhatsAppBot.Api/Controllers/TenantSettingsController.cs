@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using WhatsAppBot.Api.Contracts;
 using WhatsAppBot.Application.Abstractions;
@@ -49,6 +49,7 @@ namespace WhatsAppBot.Api.Controllers
             tenant.LocationLongitude = request.LocationLongitude;
             tenant.LocationName = request.LocationName;
             tenant.LocationAddress = request.LocationAddress;
+            tenant.WabaId = string.IsNullOrWhiteSpace(request.WabaId) ? null : request.WabaId.Trim();
 
             await _tenants.UpdateAsync(tenant, ct);
 
@@ -101,7 +102,7 @@ namespace WhatsAppBot.Api.Controllers
             => await _tenants.GetByIdAsync(_currentTenant.TenantId!.Value, ct);
 
         private static TenantSettingsDto ToDto(Tenant t) => new(
-            t.Id, t.Name, t.WhatsAppPhoneNumberId,
+            t.Id, t.Name, t.WhatsAppPhoneNumberId, t.WabaId,
             t.LocationLatitude, t.LocationLongitude, t.LocationName, t.LocationAddress,
             t.FacadePhotoUrl, t.PaymentQrImageUrl);
     }

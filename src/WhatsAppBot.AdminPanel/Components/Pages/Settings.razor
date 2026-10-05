@@ -36,6 +36,12 @@ else if (_settings is not null)
         </div>
 
         <div class="field">
+            <label for="wabaId">WABA ID (WhatsApp Business Account)</label>
+            <input id="wabaId" @bind="_wabaId" @bind:event="oninput" placeholder="Ej: 123456789012345" />
+            <span class="field-hint">Se obtiene del callback de Embedded Signup, o lo encontrás en WhatsApp Manager → Cuentas.</span>
+        </div>
+
+        <div class="field">
             <label for="name">Nombre de la tienda</label>
             <input id="name" @bind="_name" @bind:event="oninput" />
         </div>
@@ -151,6 +157,7 @@ else if (_settings is not null)
     private string? _uploadError;
 
     private string _name = "";
+    private string _wabaId = "";
     private string _locationName = "";
     private string _locationAddress = "";
     private double _locationLatitude;
@@ -179,6 +186,7 @@ else if (_settings is not null)
             }
 
             _name = _settings.Name;
+            _wabaId = _settings.WabaId ?? "";
             _locationName = _settings.LocationName;
             _locationAddress = _settings.LocationAddress;
             _locationLatitude = _settings.LocationLatitude;
@@ -265,7 +273,7 @@ else if (_settings is not null)
 
         _saving = true;
 
-        var request = new UpdateTenantSettingsRequest(_name.Trim(), _locationLatitude, _locationLongitude, _locationName.Trim(), _locationAddress.Trim());
+        var request = new UpdateTenantSettingsRequest(_name.Trim(), _locationLatitude, _locationLongitude, _locationName.Trim(), _locationAddress.Trim(), string.IsNullOrWhiteSpace(_wabaId) ? null : _wabaId.Trim());
         var (result, error) = await Api.UpdateTenantSettingsAsync(request);
 
         _saving = false;

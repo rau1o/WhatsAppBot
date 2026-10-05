@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace WhatsAppBot.Api.Contracts
 {
@@ -6,6 +6,7 @@ namespace WhatsAppBot.Api.Contracts
      Guid Id,
      string Name,
      string WhatsAppPhoneNumberId,
+     string? WabaId,
      double LocationLatitude,
      double LocationLongitude,
      string LocationName,
@@ -19,7 +20,8 @@ namespace WhatsAppBot.Api.Contracts
         double LocationLatitude,
         double LocationLongitude,
         [Required, MaxLength(200)] string LocationName,
-        [Required, MaxLength(300)] string LocationAddress
+        [Required, MaxLength(300)] string LocationAddress,
+        [MaxLength(64)] string? WabaId = null
     );
 
 }

@@ -12,9 +12,9 @@ public record InviteUserRequest(string Email, string DisplayName, string Role);
 public record InviteUserResponse(UserDto User, string TemporaryPassword);
 public record ChangeRoleRequest(string Role);
 
-public record TenantSettingsDto(Guid Id, string Name, string WhatsAppPhoneNumberId, double LocationLatitude, double LocationLongitude, string LocationName, string LocationAddress, string FacadePhotoUrl, string? PaymentQrImageUrl);
+public record TenantSettingsDto(Guid Id, string Name, string WhatsAppPhoneNumberId, string? WabaId, double LocationLatitude, double LocationLongitude, string LocationName, string LocationAddress, string FacadePhotoUrl, string? PaymentQrImageUrl);
 
-public record UpdateTenantSettingsRequest(string Name, double LocationLatitude, double LocationLongitude, string LocationName, string LocationAddress);
+public record UpdateTenantSettingsRequest(string Name, double LocationLatitude, double LocationLongitude, string LocationName, string LocationAddress, string? WabaId = null);
 
 public record PaymentProofDto(Guid Id, Guid OrderId, string CustomerPhoneNumber, decimal OrderTotal, string Status, DateTime CreatedAt);
 public record PagedResponse<T>(List<T> Items, int Page, int PageSize, int TotalCount, int TotalPages);
