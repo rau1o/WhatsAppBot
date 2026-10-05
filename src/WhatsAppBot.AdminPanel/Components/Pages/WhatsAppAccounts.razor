@@ -1,0 +1,79 @@
+@page "/whatsapp-accounts"
+@attribute [Authorize(Roles = "Owner")]
+@inject ApiClient Api
+
+<div class="page-header">
+    <div>
+        <h1>WhatsApp Accounts</h1>
+        <p class="page-subtitle">Negocios conectados y sus identificadores de WhatsApp Business Account (WABA).</p>
+    </div>
+</div>
+
+@if (_error is not null)
+{
+    <div class="alert alert-error">@_error</div>
+}
+
+@if (_loading)
+{
+    <p class="muted">Cargando...</p>
+}
+else if (_settings is not null)
+{
+    <div class="card">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Business Name</th>
+                    <th>WABA ID</th>
+                    <th>Phone Number ID</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>@_settings.Name</td>
+                    <td>
+                        @if (string.IsNullOrWhiteSpace(_settings.WabaId))
+                        {
+                            <span class="badge badge-warning">No configurado</span>
+                        }
+                        else
+                        {
+                            <code class="id-value">@_settings.WabaId</code>
+                        }
+                    </td>
+                    <td><code class="id-value">@_settings.WhatsAppPhoneNumberId</code></td>
+                </tr>
+            </tbody>
+        </table>
+
+        @if (string.IsNullOrWhiteSpace(_settings.WabaId))
+        {
+            <p class="muted" style="margin-top: 0.75rem;">
+                El WABA ID se puede configurar en
+                <a href="/settings">Configuración</a>.
+            </p>
+        }
+    </div>
+}
+
+@code {
+    private TenantSettingsDto? _settings;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _settings = await Api.GetTenantSettingsAsync();
+            if (_settings is null)
+                _error = "No pudimos cargar los datos del negocio.";
+        }
+        catch (Exception)
+        {
+            _error = "Error al conectar con el servidor. Probá de nuevo en unos segundos.";
+        }
+        _loading = false;
+    }
+}
